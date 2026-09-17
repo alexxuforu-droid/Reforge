@@ -3,7 +3,7 @@
 // 5) done + revert-everything. Every command is real; nothing is decorative.
 
 import { useEffect, useRef, useState } from "react";
-import { errorCopy, call, fmt } from "../lib/api";
+import { errorCopy, call, callWithTimeout, fmt } from "../lib/api";
 import { recordStyleApplied } from "../lib/styleAnalytics";
 import type { CleanResult, DuplicateScan, DuplicateGroup, HealthScore, JunkScan, SceneConfig, StartupEntry } from "../lib/types";
 import { ScenePreview, Section, StatusDot, toast } from "../components/ui";
@@ -167,7 +167,7 @@ export default function MakeoverSession() {
       const merged = new Map<string, DuplicateGroup>();
       let wasted = 0;
       for (const f of folders.filter((x) => x.exists && x.label !== "Home")) {
-        const scan = await call<DuplicateScan>("scan_duplicates", { dir: f.path, min_size_mb: 10 }).catch(() => null);
+        const scan = await callWithTimeout<DuplicateScan>("scan_duplicates", { dir: f.path, min_size_mb: 10 }, 120_000).catch(() => null);
         if (!scan) continue;
         for (const g of scan.groups) {
           const key = `${g.name}|${g.size}`;
@@ -420,7 +420,7 @@ export default function MakeoverSession() {
       )}
 
       {/* Stepper */}
-      <div className="flex items-center gap-1 overflow-x-auto rounded-xl border border-[var(--border-default)] bg-[var(--surface-overlay)] p-2">
+      <div className="flex items-center gap-1 overflow-x-auto rounded-xl border border-[var(--border-default)] bg-[var(--surface-overlay)] p-2" role="tablist" aria-label="Makeover steps">
         {STEPS.map((s, i) => {
           const active = step === s.id;
           const done = STEP_INDEX.indexOf(step) > i || (i === 4 && appliedName);
@@ -428,9 +428,10 @@ export default function MakeoverSession() {
             <button
               key={s.id}
               onClick={() => go(s.id)}
+              aria-current={active ? "step" : undefined}
               className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs transition-colors ${active ? "bg-[var(--surface-selected)] text-[var(--accent-hex)]" : done ? "text-[var(--status-success)] hover:bg-[var(--surface-hover)]" : "text-[var(--text-tertiary)] hover:bg-[var(--surface-hover)]"}`}
             >
-              <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold ${active ? "bg-[var(--accent-hex)] text-white" : done ? "bg-[var(--status-success)] text-white" : "bg-[var(--gray-4)] text-[var(--text-secondary)]"}`}>
+              <span className={`animate-scale-in flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold ${active ? "bg-[var(--accent-hex)] text-white" : done ? "bg-[var(--status-success)] text-white" : "bg-[var(--gray-4)] text-[var(--text-secondary)]"}`}>
                 {done ? "✓" : i + 1}
               </span>
               <span className="hidden sm:inline">{s.label}</span>
