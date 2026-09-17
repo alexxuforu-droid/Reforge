@@ -719,20 +719,20 @@ export default function MakeoverSession() {
       {/* ---- 5. Done ---- */}
       {step === "done" && (
         <Section title="Step 5 · Done" subtitle="Your makeover summary">
-          <div className="grid gap-3 sm:grid-cols-3">
-            <div className="card p-4">
+          <div aria-live="polite" className="grid gap-3 sm:grid-cols-3">
+            <div className="card animate-slide-up p-4" style={{ animationDelay: "0ms" }}>
               <div className="text-2xs font-medium uppercase tracking-wider text-[var(--text-tertiary)]">Protection</div>
               <div className="mt-1 text-lg font-semibold text-[var(--status-success)]">{snapshotId ? "Snapshot active" : "Not taken"}</div>
               <div className="text-2xs text-[var(--text-tertiary)]">Restore anytime from History</div>
             </div>
-            <div className="card p-4">
+            <div className="card animate-slide-up" style={{ animationDelay: "60ms" }}>
               <div className="text-2xs font-medium uppercase tracking-wider text-[var(--text-tertiary)]">Cleaned</div>
               <div className="mt-1 text-lg font-semibold text-[var(--text-primary)]">
                 {freedBytes > 0 ? fmt(freedBytes) + " junk" : "Nothing"}
               </div>
               <div className="text-2xs text-[var(--text-tertiary)]">{dupStagedCount} duplicate files staged to trash</div>
             </div>
-            <div className="card p-4">
+            <div className="card animate-slide-up" style={{ animationDelay: "120ms" }}>
               <div className="text-2xs font-medium uppercase tracking-wider text-[var(--text-tertiary)]">Look</div>
               <div className="mt-1 truncate text-lg font-semibold text-[var(--text-primary)]" title={appliedName ?? "None applied"}>{appliedName ?? "None applied"}</div>
               <div className="text-2xs text-[var(--text-tertiary)]">Applied as one undoable entry</div>
