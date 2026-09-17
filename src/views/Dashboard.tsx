@@ -4,8 +4,15 @@ import { useLoad } from "../lib/useLoad";
 import type { DashboardMetrics, HealthScore, SystemInfo, UndoEntry } from "../lib/types";
 import { InlineAlert, Meter, ScoreRing, Section, StatCard, StatusDot, toast } from "../components/ui";
 import {
-  NavMakeover, IconCpu, IconHardDrive, IconClock,
+  NavMakeover, IconCpu, IconHardDrive, IconClock, IconShieldCheck,
 } from "../components/icons";
+
+interface SecurityDigest {
+  overall: string;
+  third_party_active: boolean;
+  tamper_protection: boolean | null;
+  recent_scans: { ts: number; scan_type: string; result: string; threats_found: number }[];
+}
 import { hasResumableSession, loadSession, sessionAgeMinutes } from "../lib/sessionStore";
 import type { View } from "../App";
 
@@ -16,6 +23,8 @@ export default function Dashboard({ onNavigate = () => {} }: { onNavigate?: (v: 
   // session on first failure + a real error surface (InlineAlert) per section.
   const { data: metrics, error: metricsError } = useLoad<DashboardMetrics>("get_dashboard_metrics");
   const { data: recent, error: recentError } = useLoad<UndoEntry[]>("get_undo_log");
+  // P1-8 — one-call security digest from the Security Center.
+  const { data: digest } = useLoad<SecurityDigest>("security_get_digest");
   const [resumeAge, setResumeAge] = useState<number | null>(null);
 
   useEffect(() => {
@@ -148,13 +157,30 @@ export default function Dashboard({ onNavigate = () => {} }: { onNavigate?: (v: 
             sub={`${metrics?.files_organized ?? 0} files organized`}
             accent="var(--gray-10)"
           />
+          <StatCard
+            label="Security"
+            value={digest ? digest.overall : "…"}
+            sub={
+              digest && digest.recent_scans.length > 0
+                ? `last ${digest.recent_scans[0].scan_type} scan · ${digest.recent_scans[0].threats_found} threat(s)`
+                : "no scans yet — run one in Security"
+            }
+            accent={
+              digest?.overall === "healthy"
+                ? "var(--status-success)"
+                : digest?.overall === "attention"
+                  ? "var(--status-warning)"
+                  : "var(--status-danger)"
+            }
+            icon={<IconShieldCheck size={14} />}
+          />
         </div>
       </div>
 
       {/* Quick Actions */}
       <Section title="Quick actions">
         <div className="flex flex-wrap gap-2">
-          <button className="btn-primary btn-sm" onClick={() => onNavigate("makeover")}>
+          <button className="btn-primary btn-sm magnet-label" onClick={() => onNavigate("makeover")}>
             <NavMakeover size={14} /> {resumeAge !== null ? "Resume makeover" : "Makeover"}
           </button>
           {resumeAge !== null && (
