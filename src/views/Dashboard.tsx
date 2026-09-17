@@ -137,6 +137,8 @@ export default function Dashboard({ onNavigate = () => {} }: { onNavigate?: (v: 
           <StatCard
             label="Storage freed"
             value={metrics ? fmt(metrics.storage_freed) : "…"}
+            animateValue={metrics?.storage_freed}
+            formatValue={fmt}
             sub="junk, duplicates & stale files"
             accent="var(--status-success)"
           />

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { KindChip, KIND_CHIP_STYLES, Modal, ScenePreview, Select, ToastHost, Toggle, toast } from "./ui";
+import { KindChip, KIND_CHIP_STYLES, Modal, ScenePreview, Select, StatCard, ToastHost, Toggle, toast } from "./ui";
 import { UNDO_KINDS, UNDO_KIND_SET } from "../lib/undo-kinds";
 
 describe("ToastHost (stack discipline, S3.7)", () => {
@@ -61,6 +61,40 @@ describe("ToastHost (stack discipline, S3.7)", () => {
     expect(screen.getByText("Bye soon")).toBeInTheDocument();
     act(() => vi.advanceTimersByTime(5100));
     expect(screen.queryByText("Bye soon")).not.toBeInTheDocument();
+  });
+});
+
+describe("StatCard animated totals", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("animates the visible total while exposing the final accessible value", () => {
+    let frame: FrameRequestCallback = () => {};
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => { frame = callback; return 1; });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+    vi.spyOn(performance, "now").mockReturnValue(0);
+    render(<StatCard label="Storage freed" value="100 MB" animateValue={100} formatValue={(n) => `${Math.round(n)} MB`} />);
+    expect(screen.getByText("100 MB")).toHaveClass("sr-only");
+    expect(screen.getByText("0 MB")).toHaveAttribute("aria-hidden", "true");
+    act(() => frame(300));
+    expect(screen.getByText("88 MB")).toBeInTheDocument();
+    act(() => frame(600));
+    expect(screen.getAllByText("100 MB")).toHaveLength(2);
+  });
+
+  it("shows the final value immediately when reduced motion is enabled", () => {
+    vi.spyOn(window, "matchMedia").mockReturnValue({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() } as unknown as MediaQueryList);
+    const request = vi.spyOn(window, "requestAnimationFrame");
+    render(<StatCard label="Storage freed" value="100 MB" animateValue={100} formatValue={(n) => `${n} MB`} />);
+    expect(screen.getAllByText("100 MB")).toHaveLength(2);
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it("cancels its pending frame when unmounted", () => {
+    vi.spyOn(window, "requestAnimationFrame").mockReturnValue(7);
+    const cancel = vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+    const { unmount } = render(<StatCard label="Storage freed" value="100" animateValue={100} formatValue={String} />);
+    unmount();
+    expect(cancel).toHaveBeenCalledWith(7);
   });
 });
 

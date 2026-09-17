@@ -525,21 +525,56 @@ export function StatCard({
   sub,
   accent,
   icon,
+  animateValue,
+  formatValue,
 }: {
   label: string;
   value: string;
   sub?: string;
   accent?: string;
   icon?: ReactNode;
+  animateValue?: number;
+  formatValue?: (value: number) => string;
 }) {
+  const numberRef = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    const element = numberRef.current;
+    if (!element || animateValue === undefined || !Number.isFinite(animateValue) || !formatValue) return;
+    const preference = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let frame = 0;
+    const finish = () => {
+      cancelAnimationFrame(frame);
+      element.textContent = value;
+    };
+    if (preference.matches) {
+      finish();
+      return;
+    }
+    const start = performance.now();
+    element.textContent = formatValue(0);
+    const tick = (time: number) => {
+      const progress = Math.min(1, Math.max(0, (time - start) / 600));
+      element.textContent = progress === 1 ? value : formatValue(animateValue * (1 - (1 - progress) ** 3));
+      if (progress < 1) frame = requestAnimationFrame(tick);
+    };
+    const onPreference = () => { if (preference.matches) finish(); };
+    preference.addEventListener("change", onPreference);
+    frame = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(frame);
+      preference.removeEventListener("change", onPreference);
+    };
+  }, [animateValue, formatValue, value]);
   return (
     <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-raised)] p-4">
       <div className="flex items-center gap-2">
         {icon && <span className="text-[var(--text-tertiary)]">{icon}</span>}
         <div className="text-xs text-[var(--text-tertiary)]">{label}</div>
       </div>
-      <div className="mt-1 text-2xl font-semibold leading-tight" style={{ color: accent ?? "var(--text-primary)" }}>
-        {value}
+      <div className="mt-1 text-2xl font-semibold leading-tight tabular-nums" style={{ color: accent ?? "var(--text-primary)" }}>
+        {animateValue !== undefined && formatValue ? (
+          <><span className="sr-only">{value}</span><span ref={numberRef} aria-hidden="true">{value}</span></>
+        ) : value}
       </div>
       {sub && <div className="mt-1 truncate text-xs text-[var(--text-tertiary)]" title={sub}>{sub}</div>}
     </div>
