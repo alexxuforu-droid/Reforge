@@ -4,7 +4,7 @@
 // asserts every list shows an honest empty state — never a raw "undefined" or a
 // blank panel. Also renders History and Marketplace (the other S2.4-named views).
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import Makeover from "./Makeover";
 import History from "./History";
 import Marketplace from "./Marketplace";
@@ -65,6 +65,25 @@ beforeEach(() => {
   callWithTimeoutMock.mockReset();
   callWithTimeoutMock.mockResolvedValue(null);
   callMock.mockImplementation(async (cmd: string) => zeroDataCall(cmd));
+});
+
+describe("Marketplace featured looks", () => {
+  it("browses installed packs using local arrow keys without hiding the full list", async () => {
+    callMock.mockImplementation(async (cmd: string) => cmd === "marketplace_list_bundles"
+      ? ["Ocean", "Forest"].map((name) => ({ id: name, name, version: "1", author: "Local", description: `${name} look`, component_count: 2, applied_count: 0 }))
+      : zeroDataCall(cmd));
+    render(<Marketplace />);
+    const carousel = await screen.findByRole("region", { name: "Featured looks" });
+    expect(within(carousel).getByText("Ocean")).toBeInTheDocument();
+    fireEvent.keyDown(carousel, { key: "ArrowRight" });
+    expect(within(carousel).getByText("Forest")).toBeInTheDocument();
+    expect(screen.getAllByText("Ocean")).toHaveLength(1);
+    fireEvent.keyDown(carousel, { key: "Home" });
+    expect(within(carousel).getByText("Ocean")).toBeInTheDocument();
+    fireEvent.click(within(carousel).getByRole("button", { name: "Next look" }));
+    expect(within(carousel).getByText("Forest")).toBeInTheDocument();
+    expect(callMock).not.toHaveBeenCalledWith("marketplace_apply", expect.anything());
+  });
 });
 
 describe("S2.4 zero-data empty states", () => {

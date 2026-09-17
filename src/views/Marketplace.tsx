@@ -68,6 +68,9 @@ function packGradient(manifest: BundleManifest): string {
 
 export default function Marketplace() {
   const [bundles, setBundles] = useState<BundleInfo[]>([]);
+  const [featuredIndex, setFeaturedIndex] = useState(0);
+  const selectedIndex = Math.min(featuredIndex, Math.max(0, bundles.length - 1));
+  const featured = bundles[selectedIndex];
   const [importPath, setImportPath] = useState("");
   const [exportName, setExportName] = useState("");
   const [busy, setBusy] = useState(false);
@@ -195,6 +198,41 @@ export default function Marketplace() {
           </p>
         </Section>
       </div>
+
+      {featured && (
+        <section
+          aria-label="Featured looks"
+          aria-roledescription="carousel"
+          tabIndex={0}
+          className="card p-4"
+          onKeyDown={(event) => {
+            const next = event.key === "ArrowRight" ? (selectedIndex + 1) % bundles.length
+              : event.key === "ArrowLeft" ? (selectedIndex + bundles.length - 1) % bundles.length
+              : event.key === "Home" ? 0 : event.key === "End" ? bundles.length - 1 : null;
+            if (next !== null) {
+              event.preventDefault();
+              setFeaturedIndex(next);
+            }
+          }}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="widget-title">Featured looks</h2>
+            <div className="flex items-center gap-2">
+              <button className="btn-ghost btn-sm" aria-label="Previous look" disabled={bundles.length < 2} onClick={() => setFeaturedIndex((selectedIndex + bundles.length - 1) % bundles.length)}>Previous</button>
+              <span className="text-xs tabular-nums text-[var(--text-secondary)]">{selectedIndex + 1} / {bundles.length}</span>
+              <button className="btn-ghost btn-sm" aria-label="Next look" disabled={bundles.length < 2} onClick={() => setFeaturedIndex((selectedIndex + 1) % bundles.length)}>Next</button>
+            </div>
+          </div>
+          <div aria-live="polite" aria-atomic="true" className="mt-4">
+            <div key={featured.id} className="motion-safe:animate-slide-up">
+              <h3 className="text-lg font-semibold text-[var(--text-primary)]">{featured.name}</h3>
+              <p className="mt-1 text-sm text-[var(--text-secondary)]">{featured.description}</p>
+              <p className="mt-2 text-xs text-[var(--text-tertiary)]">{featured.component_count} components · by {featured.author}</p>
+            </div>
+          </div>
+          <button className="btn-primary btn-sm mt-4" onClick={() => showPreview(featured)}><IconEye size={12} /> Preview featured look</button>
+        </section>
+      )}
 
       {/* Installed Packs Grid */}
       <Section
