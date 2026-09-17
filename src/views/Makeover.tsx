@@ -10,9 +10,9 @@ import { announceThemeChanged } from "../lib/theme-dom";
 const IMPORT_TIMEOUT_MS = 180_000;
 import type {
   CapabilityMatrix, CursorScheme, CursorState, EngineState, FontEntry,
-  FontSubstitution, LockScreenState, Pack, PendingShellState, SceneConfig,
+  FontSubstitution, LockScreenState, Pack, PendingShellState, SceneConfig, TaskbarCapabilities,
   ScreensaverConfig, ScreensaverRegistry, SoundEventInfo,
-  SoundSchemeInfo, TaskbarState, ThemeState, TranscodeStatus, UndoEntry,
+  SoundSchemeInfo, TaskbarState, ThemeState, TranscodeConfig, TranscodeStatus, UndoEntry,
   VideoWallpaper, WallpaperHistoryEntry, WallpaperSlideshowConfig,
   WallpaperState, WidgetConfig, WidgetsSettings,
 } from "../lib/types";
@@ -23,7 +23,7 @@ import { decodeStyleCode, encodeStyleCode, shareCodeError } from "../lib/shareCo
 import { getStyleAnalytics, recordStyleApplied, type StyleAnalytics } from "../lib/styleAnalytics";
 import {
   IconPower, IconPlus, IconTrash, IconPause, IconPlay,
-  IconImage, IconFilm, IconStar, IconSearch, IconChevronDown,
+  IconImage, IconFilm, IconStar, IconSearch, IconChevronDown, IconUpload, IconDownload,
 } from "../components/icons";
 import type { StyleDef, QuizAnswers } from "../styles/types";
 import type { WallpaperEntry } from "../styles";
@@ -170,16 +170,25 @@ export default function Makeover() {
   // ---- Video wallpaper ----
   const { data: videoWallpapers, error: videoError, refresh: refreshVideoWallpapers, load: loadVideoWallpapers } = useLazyLoad<VideoWallpaper[]>("list_video_wallpapers");
   const { data: transcode, error: transcodeError, refresh: refreshTranscode, load: loadTranscode } = useLazyLoad<TranscodeStatus>("media_get_transcode_status");
-  const videoRef = useVisibleOnce(() => { loadVideoWallpapers(); loadTranscode(); });
+  // P2-1 — the import quality preset lives here too, not just in Settings.
+  const { data: transcodeCfg, refresh: refreshTranscodeCfg, load: loadTranscodeCfg } = useLazyLoad<TranscodeConfig>("get_transcode_config");
+  const videoRef = useVisibleOnce(() => { loadVideoWallpapers(); loadTranscode(); loadTranscodeCfg(); });
   const [videoPath, setVideoPath] = useState("");
   const [videoBusy, setVideoBusy] = useState(false);
+  // P2-1 — pause/resume state (the video window keeps playing underneath).
+  const [videoPaused, setVideoPaused] = useState(false);
+  const [soundImportPath, setSoundImportPath] = useState("");
   // E1 — live transcode status from the backend (`transcode-progress` events).
   const [transcodeNote, setTranscodeNote] = useState<string | null>(null);
+  // P2-7 — scene → pack export (capture_look now includes the running scene).
+  const [packBusy, setPackBusy] = useState(false);
 
   // ---- Taskbar ----
   const { data: taskbar, error: taskbarError, refresh: refreshTaskbarState, load: loadTaskbar } = useLazyLoad<TaskbarState>("shell_get_taskbar_state");
   const { data: pendingShell, error: pendingError, refresh: refreshPendingShell, load: loadPendingShell } = useLazyLoad<PendingShellState>("shell_get_pending_state");
-  const taskbarRef = useVisibleOnce(() => { loadTaskbar(); loadPendingShell(); });
+  // P1-12 — which taskbar tweaks this OS build supports + the authoritative note.
+  const { data: taskbarCaps, error: taskbarCapsError, load: loadTaskbarCaps } = useLazyLoad<TaskbarCapabilities>("shell_get_taskbar_capabilities");
+  const taskbarRef = useVisibleOnce(() => { loadTaskbar(); loadPendingShell(); loadTaskbarCaps(); });
 
   // ---- Sounds ----
   const { data: schemes, error: schemesError, refresh: refreshSchemes, load: loadSchemes } = useLazyLoad<SoundSchemeInfo[]>("list_sound_schemes");
@@ -208,6 +217,8 @@ export default function Makeover() {
   const [slideshowFolder, setSlideshowFolder] = useState("");
   const [slideshowInterval, setSlideshowInterval] = useState(30);
   const [monitorTarget, setMonitorTarget] = useState("");
+  // M-1 — which monitor a newly-set video wallpaper plays on ("" = all)
+  const [videoMonitor, setVideoMonitor] = useState("");
   // S11.5 — smart slideshow: favorites (3× weight), day/night filter, skip-now.
   const [favInput, setFavInput] = useState("");
 
@@ -271,7 +282,7 @@ export default function Makeover() {
         await call<WallpaperState>("set_monitor_wallpaper", { monitor_id: monitorTarget, path: wpPath });
         toast("Wallpaper set for that monitor only");
       } else if (isLive) {
-        const eng = await callWithTimeout<EngineState>("set_video_wallpaper", { source: wpPath }, IMPORT_TIMEOUT_MS);
+        const eng = await callWithTimeout<EngineState>("set_video_wallpaper", { source: wpPath, monitor: monitorTarget || undefined }, IMPORT_TIMEOUT_MS);
         toast(`Now playing: ${eng.media?.name ?? "video"}`);
       } else {
         await call<WallpaperState>("set_wallpaper", { path: wpPath });
@@ -367,7 +378,8 @@ export default function Makeover() {
     setVideoBusy(true);
     setTranscodeNote(null);
     try {
-      await callWithTimeout<EngineState>("set_video_wallpaper", { source: videoPath }, IMPORT_TIMEOUT_MS);
+      await callWithTimeout<EngineState>("set_video_wallpaper", { source: videoPath, monitor: videoMonitor || undefined }, IMPORT_TIMEOUT_MS);
+      setVideoPaused(false);
       refreshEngine(); refreshVideo(); toast("Video wallpaper set");
     } catch (err) { toast(errorCopy(err), "err"); } finally { setVideoBusy(false); setTranscodeNote(null); }
   };
@@ -376,8 +388,39 @@ export default function Makeover() {
     setVideoBusy(true);
     try {
       await call<EngineState>("stop_video_wallpaper", {});
+      setVideoPaused(false);
       refreshEngine(); toast("Video wallpaper stopped");
     } catch (err) { toast(errorCopy(err), "err"); } finally { setVideoBusy(false); }
+  };
+
+  // P2-1 — pause/resume without restarting the video window.
+  const toggleVideoPaused = async () => {
+    const next = !videoPaused;
+    setVideoPaused(next);
+    try {
+      await call("set_video_paused", { paused: next });
+      toast(next ? "Video paused" : "Video playing");
+    } catch (err) { toast(errorCopy(err), "err"); }
+  };
+
+  // P2-7 — capture the current look (running scene included) as a shareable pack.
+  const exportScenePack = async () => {
+    if (!engine?.scene) return;
+    setPackBusy(true);
+    try {
+      const b = await call<{ name: string }>("marketplace_export_look", { name: engine.scene.name });
+      toast(`Captured "${b.name}" as a pack — see Pack Marketplace to share it`);
+    } catch (err) { toast(errorCopy(err), "err"); } finally { setPackBusy(false); }
+  };
+
+  // P5-4 — one-click full look export (accent, mode, wallpaper, video, scene,
+  // sounds, fonts, taskbar, cursor, lock screen — capture_look does it all).
+  const exportCurrentLook = async () => {
+    setPackBusy(true);
+    try {
+      const b = await call<{ name: string }>("marketplace_export_look", { name: "My Look" });
+      toast(`Captured your current look as "${b.name}" — see Pack Marketplace to share it`);
+    } catch (err) { toast(errorCopy(err), "err"); } finally { setPackBusy(false); }
   };
 
   const setTaskbarSize = (size: string) =>
@@ -426,6 +469,14 @@ export default function Makeover() {
     if (!lsImagePath.trim()) return;
     call<LockScreenState>("set_lock_screen_image", { source: lsImagePath }).then(() => { toast("Lock screen image set"); refreshLockScreenState(); }).catch((e) => toast(errorCopy(e), "err"));
   };
+  // P2-5 — the webview CSP blocks file:// images; the backend returns a data URL.
+  const [lsPreview, setLsPreview] = useState<string | null>(null);
+  const previewLockScreen = () => {
+    if (!lsImagePath.trim()) return;
+    call<string>("read_image_data_url", { path: lsImagePath })
+      .then((url) => setLsPreview(url))
+      .catch((e) => toast(errorCopy(e), "err"));
+  };
   const setLsSlideshow = () => {
     if (!lsFolder.trim()) return;
     call<LockScreenState>("set_lock_screen_slideshow", { folder: lsFolder, interval_minutes: lsInterval, shuffle: true }).then(() => { toast("Lock screen slideshow set"); refreshLockScreenState(); }).catch((e) => toast(errorCopy(e), "err"));
@@ -465,6 +516,8 @@ export default function Makeover() {
   // resolving after a save must never overwrite the user's choice.
   useEffect(() => { setSsCfg((prev) => prev ?? screensaverCfg ?? null); }, [screensaverCfg]);
   const shownSsCfg = ssCfg ?? screensaverCfg;
+  // P2-6 — the scene currently picked for the screensaver (for the thumbnail).
+  const screensaverScene = (scenes ?? []).find((s) => s.id === screensaverSceneId) ?? shownSsCfg?.scene ?? null;
 
   const saveScreensaver = async (next: Partial<ScreensaverConfig>) => {
     const base = shownSsCfg ?? { enabled: false, timeout_secs: 300, scene: null };
@@ -662,6 +715,16 @@ export default function Makeover() {
       <header className="page-head">
         <h1 className="page-title">Style Studio</h1>
         <p className="page-subtitle">Pick a look, preview it live, apply it in one click. Everything is undoable.</p>
+        <div className="mt-2">
+          <button
+            className="btn-ghost text-xs"
+            disabled={packBusy}
+            onClick={exportCurrentLook}
+            title="Capture your whole current look — accent, wallpaper, video, scene, sounds, fonts, taskbar — into a shareable .reforgepack"
+          >
+            <IconDownload size={13} /> {packBusy ? "Capturing…" : "Export current look"}
+          </button>
+        </div>
       </header>
 
       <div className="grid gap-4 xl:grid-cols-[1.3fr_1fr]">
@@ -734,7 +797,7 @@ export default function Makeover() {
               onApply={async (publicPath, type) => {
                 setWpPath(publicPath);
                 if (type === "live") {
-                  callWithTimeout<EngineState>("set_video_wallpaper", { source: publicPath }, IMPORT_TIMEOUT_MS)
+                  callWithTimeout<EngineState>("set_video_wallpaper", { source: publicPath, monitor: videoMonitor || undefined }, IMPORT_TIMEOUT_MS)
                     .then((eng) => { refresh(); refreshVideo(); toast(`Now playing: ${eng.media?.name ?? "video"}`); })
                     .catch((e) => toast(errorCopy(e), "err"));
                 } else {
@@ -1127,7 +1190,7 @@ export default function Makeover() {
 
       {/* ---- Animated Wallpaper Engine ---- */}
       <div ref={engineRef}>
-      <Section title="Animated Wallpaper Engine" subtitle="Living, breathing desktops — procedural scenes render behind your icons" actions={<div className="flex gap-2"><button className="btn-ghost shrink-0 text-2xs" onClick={() => setStudioOpen(true)}>Wallpaper Studio</button>{engine?.active ? (<><button className="btn-ghost shrink-0 text-2xs" onClick={() => freezeScene(!engine.frozen)}>{engine.frozen ? <><IconPlay size={11} /> Resume</> : <><IconPause size={11} /> Freeze</>}</button><button className="btn-danger shrink-0 text-2xs" disabled={engineBusy} onClick={stopScene}><IconPower size={11} /> Stop</button></>) : (<span className="badge badge-neutral">Not running</span>)}</div>}>
+      <Section title="Animated Wallpaper Engine" subtitle="Living, breathing desktops — procedural scenes render behind your icons" actions={<div className="flex gap-2"><button className="btn-ghost shrink-0 text-2xs" onClick={() => setStudioOpen(true)}>Wallpaper Studio</button>{engine?.active ? (<><button className="btn-ghost shrink-0 text-2xs" onClick={() => freezeScene(!engine.frozen)}>{engine.frozen ? <><IconPlay size={11} /> Resume</> : <><IconPause size={11} /> Freeze</>}</button><button className="btn-danger shrink-0 text-2xs" disabled={engineBusy} onClick={stopScene}><IconPower size={11} /> Stop</button></>) : (<span className="badge badge-neutral">Not running</span>)}{engine?.scene && (<button className="btn-ghost shrink-0 text-2xs" disabled={packBusy} onClick={exportScenePack} title="Capture this scene (plus your current look) into a shareable pack">{packBusy ? "Capturing…" : "Export scene pack"}</button>)}</div>}>
         {engineError && <InlineAlert>{engineError}</InlineAlert>}
         {scenesError && <InlineAlert>{scenesError}</InlineAlert>}
         {engine?.active && (
@@ -1150,7 +1213,7 @@ export default function Makeover() {
                   {hoverScene === s.id ? (
                     <ScenePreview kind={s.kind} colors={s.colors} speed={s.speed} density={s.density} className="h-full w-full" />
                   ) : (
-                    // static color story until hovered — zero canvases on load (S7.6)
+                    // static color story until hovered — zero canvases on load (S7.6, content preview)
                     <div className="h-full w-full" style={{ background: `linear-gradient(135deg, ${s.colors[1] ?? s.colors[0]}, ${s.colors[0]})` }} />
                   )}
                 </div>
@@ -1229,18 +1292,54 @@ export default function Makeover() {
             Move the mouse or press any key to exit — fullscreen, always-on-top, zero chrome.
           </div>
         </div>
+        {/* P2-6 — see the scene before you arm it */}
+        {screensaverScene && (
+          <div className="mt-3">
+            <div className="mb-1 text-2xs font-medium uppercase tracking-wider text-[var(--text-tertiary)]">Scene preview</div>
+            <ScenePreview kind={screensaverScene.kind} colors={screensaverScene.colors} speed={screensaverScene.speed} density={screensaverScene.density} className="h-32 w-full rounded-lg" />
+          </div>
+        )}
       </Section>
       </div>
 
       {/* ---- Video / GIF wallpaper ---- */}
       <div ref={videoRef}>
-      <Section title="Video & GIF wallpaper" subtitle="Loop a video or animated image — MP4, WebM and GIF, normalized on import" actions={engine?.media ? (<button className="btn-danger shrink-0 text-xs" disabled={videoBusy} onClick={stopVideoWallpaper}><IconPower size={12} /> Stop video</button>) : undefined}>
+      <Section title="Video & GIF wallpaper" subtitle="Loop a video or animated image — MP4, WebM and GIF, normalized on import" actions={engine?.media ? (<div className="flex gap-2"><button className="btn-ghost shrink-0 text-xs" onClick={toggleVideoPaused}>{videoPaused ? <><IconPlay size={12} /> Resume</> : <><IconPause size={12} /> Pause</>}</button><button className="btn-danger shrink-0 text-xs" disabled={videoBusy} onClick={stopVideoWallpaper}><IconPower size={12} /> Stop video</button></div>) : undefined}>
         {videoError && <InlineAlert>{videoError}</InlineAlert>}
         {transcodeError && <InlineAlert>{transcodeError}</InlineAlert>}
         <div className="mb-3 flex gap-2">
           <input className="input" placeholder="C:\videos\aurora.mp4" value={videoPath} onChange={(e) => setVideoPath(e.target.value)} />
           <button className="btn-primary shrink-0" onClick={setVideoWallpaper} disabled={videoBusy || !videoPath.trim()}>{videoBusy ? "Importing…" : "Set video"}</button>
         </div>
+        {/* P2-1 — import quality preset lives here too (not just Settings) */}
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <span className="text-2xs text-[var(--text-tertiary)]">Import quality:</span>
+          {(["high", "balanced", "performance"] as const).map((p) => (
+            <button
+              key={p}
+              onClick={() =>
+                call<TranscodeConfig>("set_transcode_config", { config: { preset: p } })
+                  .then(() => { refreshTranscodeCfg(); toast(`Video imports → ${p}`); })
+                  .catch((e) => toast(errorCopy(e), "err"))
+              }
+              className={`rounded-lg border px-2.5 py-1 text-2xs capitalize transition-colors ${(transcodeCfg?.preset ?? "balanced") === p ? "border-[var(--accent-hex)] bg-[var(--accent-hex)]/10 text-[var(--text-primary)]" : "border-[var(--border-default)] bg-[var(--surface-overlay)] text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]"}`}
+            >
+              {p}
+            </button>
+          ))}
+          <span className="text-2xs text-[var(--text-tertiary)]">high = best quality, biggest files · performance = fastest, smallest</span>
+        </div>
+        {/* M-1 — pin the video to one monitor or span them all */}
+        {wallpapers && wallpapers.monitors.length > 1 && (
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <span className="text-2xs text-[var(--text-tertiary)]">Play on:</span>
+            <select value={videoMonitor} onChange={(e) => setVideoMonitor(e.target.value)} aria-label="Monitor for new video wallpapers">
+              <option value="">All monitors</option>
+              {wallpapers.monitors.map((m) => (<option key={m.id} value={m.id}>{m.id}</option>))}
+            </select>
+            <span className="text-2xs text-[var(--text-tertiary)]">applies to the next video you set</span>
+          </div>
+        )}
         {videoBusy && transcodeNote && (
           <div className="mb-3 flex items-center gap-2 text-xs text-[var(--text-secondary)]">
             <span className="h-2 w-2 animate-pulse rounded-full bg-[var(--accent-hex)]" />
@@ -1262,9 +1361,9 @@ export default function Makeover() {
             <div className="mb-1.5 text-2xs font-medium uppercase tracking-wider text-[var(--text-tertiary)]">Imported media</div>
             <div className="flex flex-wrap gap-2">
               {(videoWallpapers ?? []).map((v) => (
-                <button key={v.path} onClick={() => call<EngineState>("set_video_wallpaper", { source: v.path }).then(() => { refreshEngine(); toast(`Video → ${v.name}`); }).catch((e) => toast(errorCopy(e), "err"))} className={`rounded-xl border px-3 py-2 text-left text-xs transition-colors ${engine?.media?.path === v.path ? "border-[var(--status-success-border)] bg-[var(--status-success-bg)]" : "border-[var(--border-default)] bg-[var(--surface-overlay)] hover:bg-[var(--surface-hover)]"}`}>
+                <button key={v.path} onClick={() => call<EngineState>("set_video_wallpaper", { source: v.path, monitor: videoMonitor || undefined }).then(() => { refreshEngine(); toast(`Video → ${v.name}`); }).catch((e) => toast(errorCopy(e), "err"))} className={`rounded-xl border px-3 py-2 text-left text-xs transition-colors ${engine?.media?.path === v.path ? "border-[var(--status-success-border)] bg-[var(--status-success-bg)]" : "border-[var(--border-default)] bg-[var(--surface-overlay)] hover:bg-[var(--surface-hover)]"}`}>
                   <div className="font-medium text-[var(--text-primary)]">{v.name}</div>
-                  <div className="text-2xs text-[var(--text-tertiary)]">{v.kind} · {v.width}×{v.height}</div>
+                  <div className="text-2xs text-[var(--text-tertiary)]">{v.kind} · {v.width}×{v.height}{engine?.media?.monitor ? <> · pinned to {engine.media.monitor}</> : null}</div>
                 </button>
               ))}
             </div>
@@ -1327,6 +1426,7 @@ export default function Makeover() {
           {engine?.scene && engine.scene.kind && engine.scene.colors.length >= 2 ? (
             <ScenePreview kind={engine.scene.kind} colors={engine.scene.colors} speed={engine.scene.speed} density={engine.scene.density} className="absolute inset-0 h-full w-full" />
           ) : (
+            // content preview fallback while no scene is live
             <div className="absolute inset-0" style={{ background: "linear-gradient(135deg,#0f172a,#1e293b)" }} />
           )}
           <div className="absolute bottom-0 left-0 right-0 h-[6%] bg-black/45" />
@@ -1356,6 +1456,28 @@ export default function Makeover() {
       <Section title="Taskbar redesigner" subtitle="Size, alignment, auto-hide & color-match — registry-backed" actions={pendingShell?.pending ? (<div className="flex gap-2"><button className="btn-ghost shrink-0 text-xs" onClick={revertPending}>↩ Revert</button><button className="btn-primary shrink-0 text-xs" onClick={applyPendingRestart}>↻ Restart Explorer</button></div>) : undefined}>
         {taskbarError && <InlineAlert>{taskbarError}</InlineAlert>}
         {pendingError && <InlineAlert>{pendingError}</InlineAlert>}
+        {taskbarCapsError && <InlineAlert>{taskbarCapsError}</InlineAlert>}
+        {/* P2-4 — live mini-taskbar preview reflecting the pending state */}
+        <div className="mb-4 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-overlay)] p-3">
+          <div className="mb-2 text-2xs font-medium uppercase tracking-wider text-[var(--text-tertiary)]">Live preview</div>
+          <div className="relative h-20 overflow-hidden rounded-lg border border-[var(--border-default)] bg-[var(--surface-base)]">
+            <div
+              className={`absolute inset-x-0 bottom-0 flex items-center gap-1.5 transition-all duration-150 ${taskbar?.alignment === "left" ? "justify-start pl-2" : "justify-center"} ${taskbar?.autohide ? "translate-y-2 opacity-60" : ""}`}
+              style={{
+                height: taskbar?.size === "small" ? "14px" : taskbar?.size === "large" ? "26px" : "20px",
+                background: taskbar?.color_match ? "var(--accent-hex)" : "var(--surface-overlay)",
+              }}
+            >
+              {[0, 1, 2].map((i) => (
+                <span key={i} className="h-1.5 w-1.5 rounded-full bg-[var(--text-tertiary)]" />
+              ))}
+            </div>
+          </div>
+          <div className="mt-1.5 text-2xs text-[var(--text-tertiary)]">
+            {taskbar?.size} · {taskbar?.alignment} · {taskbar?.autohide ? "auto-hide" : "always visible"}{taskbar?.color_match ? " · accent-matched" : ""}
+            {pendingShell?.pending ? " · changes queued — restart Explorer to apply" : ""}
+          </div>
+        </div>
         <div className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div><div className="text-sm font-medium text-[var(--text-secondary)]">Icon size</div></div>
@@ -1373,7 +1495,7 @@ export default function Makeover() {
             <div><div className="text-sm font-medium text-[var(--text-secondary)]">Match accent color</div></div>
             <Toggle on={taskbar?.color_match ?? false} onChange={setTaskbarColorMatch} />
           </div>
-          {caps?.taskbar_reposition_supported ? (
+          {(taskbarCaps?.reposition_supported ?? caps?.taskbar_reposition_supported) ? (
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div><div className="text-sm font-medium text-[var(--text-secondary)]">Position</div><div className="text-2xs text-[var(--text-tertiary)]">Windows 10 only</div></div>
               <div className="segment">{["bottom", "top", "left", "right"].map((s) => (<button key={s} onClick={() => setTaskbarPosition(s)} className="segment-btn">{s}</button>))}</div>
@@ -1381,9 +1503,10 @@ export default function Makeover() {
           ) : (
             // S3.10 — capability-gated dead controls: when the OS can't
             // reposition the taskbar (Win11), show a disabled explainer
-            // instead of a live-looking control or a silent gap.
+            // instead of a live-looking control or a silent gap. The copy
+            // comes from the backend command (P1-12) so it stays authoritative.
             <div className="flex flex-wrap items-center justify-between gap-3 opacity-60">
-              <div><div className="text-sm font-medium text-[var(--text-secondary)]">Position</div><div className="text-2xs text-[var(--text-tertiary)]">Windows 10 only — not available on this Windows version</div></div>
+              <div><div className="text-sm font-medium text-[var(--text-secondary)]">Position</div><div className="text-2xs text-[var(--text-tertiary)]">{taskbarCaps?.note ?? "Windows 10 only — not available on this Windows version"}</div></div>
               <div className="segment" aria-disabled="true">{["bottom", "top", "left", "right"].map((s) => (<button key={s} disabled className="segment-btn">{s}</button>))}</div>
             </div>
           )}
@@ -1410,6 +1533,21 @@ export default function Makeover() {
         <div className="mb-4 flex gap-2">
           <input className="input" placeholder="Save current sounds as a scheme…" value={schemeName} onChange={(e) => setSchemeName(e.target.value)} />
           <button className="btn-ghost btn-sm shrink-0" onClick={saveScheme} disabled={!schemeName.trim()}>Save scheme</button>
+        </div>
+        {/* P2-2 — import your own .wav into the current scheme */}
+        <div className="mb-4 flex gap-2">
+          <input className="input" placeholder="C:\sounds\notify.wav — import your own sound" value={soundImportPath} onChange={(e) => setSoundImportPath(e.target.value)} aria-label="Sound file to import" />
+          <button
+            className="btn-ghost btn-sm shrink-0"
+            disabled={!soundImportPath.trim()}
+            onClick={() =>
+              call<string>("import_sound_asset", { source: soundImportPath.trim() })
+                .then((m) => { toast(m); setSoundImportPath(""); refreshSounds(); })
+                .catch((e) => toast(errorCopy(e), "err"))
+            }
+          >
+            <IconUpload size={12} /> Import .wav
+          </button>
         </div>
         <div className="grid gap-1.5 sm:grid-cols-2">
           {(soundEvents ?? []).map((evt) => (
@@ -1442,10 +1580,40 @@ export default function Makeover() {
           </div>
           <datalist id="font-list">{(installedFonts ?? []).map((f) => (<option key={f.name} value={f.name} />))}</datalist>
         </div>
+        {/* P2-3 — see the font before you commit to it */}
+        <div className="mb-4 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-overlay)] p-3">
+          <div className="mb-1 text-2xs font-medium uppercase tracking-wider text-[var(--text-tertiary)]">Preview</div>
+          <div
+            className="text-lg leading-snug text-[var(--text-primary)]"
+            style={{ fontFamily: `"${fontSubstitute || fontOriginal || "Segoe UI"}", Segoe UI, system-ui, sans-serif` }}
+          >
+            The quick brown fox jumps over the lazy dog — AaBbCc 0123456789
+          </div>
+          <div className="mt-1 text-2xs text-[var(--text-tertiary)]">
+            {fontSubstitute
+              ? `Rendered in “${fontSubstitute}” — applies system-wide after an Explorer restart.`
+              : "Type a font name in the “With” field above to preview it before applying."}
+          </div>
+        </div>
         <div className="mb-4 flex gap-2">
           <input className="input" placeholder="C:\fonts\MyFont.ttf" value={fontInstallPath} onChange={(e) => setFontInstallPath(e.target.value)} />
           <button className="btn-ghost btn-sm shrink-0" onClick={installFont} disabled={!fontInstallPath.trim()}>Install font</button>
         </div>
+        {(fontSubs ?? []).length > 0 && (
+          <div className="mb-1.5 flex items-center justify-between">
+            <span className="text-2xs font-medium uppercase tracking-wider text-[var(--text-tertiary)]">Active substitutions</span>
+            <button
+              className="text-2xs text-[var(--text-tertiary)] hover:text-[var(--status-danger)]"
+              onClick={() =>
+                Promise.all((fontSubs ?? []).map((s) => call("set_font_substitution", { original: s.original, substitute: "" })))
+                  .then(() => { toast("All font substitutions reset"); refreshFontSubs(); })
+                  .catch((e) => toast(errorCopy(e), "err"))
+              }
+            >
+              Restore all
+            </button>
+          </div>
+        )}
         <div className="space-y-1.5">
           {(fontSubs ?? []).map((s) => (
             <div key={s.original} className="flex items-center gap-2 rounded-lg bg-[var(--surface-overlay)] px-3 py-2">
@@ -1480,8 +1648,14 @@ export default function Makeover() {
         </div>
         <div className="mb-3 flex gap-2">
           <input className="input" placeholder="C:\pictures\lock.png (image mode)" value={lsImagePath} onChange={(e) => setLsImagePath(e.target.value)} />
+          <button className="btn-ghost btn-sm shrink-0" onClick={previewLockScreen} disabled={!lsImagePath.trim()}>Preview</button>
           <button className="btn-ghost btn-sm shrink-0" onClick={setLsImage} disabled={!lsImagePath.trim()}>Set image</button>
         </div>
+        {lsPreview && (
+          <div className="mb-3 overflow-hidden rounded-xl border border-[var(--border-default)] bg-[var(--surface-overlay)]">
+            <img src={lsPreview} alt="Lock screen image preview" className="w-full object-cover" style={{ maxHeight: 240 }} />
+          </div>
+        )}
         <div className="mb-3 space-y-2 rounded-xl bg-[var(--surface-overlay)] p-3">
           <div className="flex gap-2">
             <input className="input" placeholder="C:\pictures\slideshow (folder)" value={lsFolder} onChange={(e) => setLsFolder(e.target.value)} />
@@ -1617,7 +1791,7 @@ export default function Makeover() {
               <span className="text-2xs font-medium uppercase tracking-wider text-[var(--text-tertiary)]">Question {quizStep + 1} of {QUIZ.length}</span>
               <div className="flex gap-1">{QUIZ.map((_, i) => (<span key={i} className={`h-1 w-3.5 rounded-full transition-colors ${i <= quizStep ? "bg-[var(--accent-hex)]" : "bg-[var(--surface-active)]"}`} />))}</div>
             </div>
-            <p className="mb-4 text-base font-medium text-[var(--text-primary)]">{QUIZ[quizStep].q}</p>
+            <p aria-live="polite" className="mb-4 text-base font-medium text-[var(--text-primary)] animate-fade-in">{QUIZ[quizStep].q}</p>
             <div className="space-y-2">
               {QUIZ[quizStep].options.map((opt, i) => (
                 <button key={i} onClick={() => pickQuiz(i)} className="flex w-full items-center gap-3 rounded-lg border border-[var(--border-default)] px-4 py-2.5 text-left transition-colors hover:border-[var(--border-accent)] hover:bg-[var(--surface-hover)]">
