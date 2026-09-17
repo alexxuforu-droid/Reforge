@@ -743,6 +743,22 @@ textarea:focus-visible {
    Hover row
    ============================================================================ */
 
+.look-artwork {
+  transition: transform 180ms var(--ease-out-expo);
+  transform-origin: center;
+}
+@media (prefers-reduced-motion: no-preference) and (hover: hover) and (pointer: fine) {
+  .look-artwork:hover {
+    transform: perspective(900px) rotateX(2deg) rotateY(-3deg) scale(1.015);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .look-artwork {
+    transform: none !important;
+    transition: none !important;
+  }
+}
+
 .hover-row {
   transition: background var(--duration-fast) var(--ease-in-out-smooth);
 }

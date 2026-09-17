@@ -3,13 +3,16 @@ import { errorCopy, call } from "../lib/api";
 import type { BundleInfo, BundleManifest } from "../lib/types";
 import { Modal, Section, toast } from "../components/ui";
 import {
-  IconRefresh, IconDownload, IconUpload, IconCheck, IconTrash, IconEye,
+  IconRefresh, IconDownload, IconUpload, IconCheck, IconTrash, IconEye, IconCopy,
 } from "../components/icons";
+// P5-3 — pack share codes carry the declarative look (accent/mode/taskbar/scene).
+import { decodePackCode, encodePackCode, packCodeError } from "../lib/shareCodes";
 
 const COMPONENT_ICONS: Record<string, string> = {
   accent: "A",
   theme_mode: "T",
   wallpaper: "W",
+  video: "V",
   taskbar: "B",
   cursor: "C",
   sound_scheme: "S",
@@ -23,6 +26,7 @@ const COMPONENT_LABELS: Record<string, string> = {
   accent: "Accent color",
   theme_mode: "Theme mode",
   wallpaper: "Wallpaper",
+  video: "Video wallpaper",
   taskbar: "Taskbar settings",
   cursor: "Cursor scheme",
   sound_scheme: "Sound scheme",
@@ -77,6 +81,13 @@ export default function Marketplace() {
   const [preview, setPreview] = useState<{ bundle: BundleInfo; manifest: BundleManifest } | null>(null);
   const [applyOpen, setApplyOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<BundleInfo | null>(null);
+  // P5-2 — rendered preview of the pack's first media asset (data URL).
+  const [previewImg, setPreviewImg] = useState<string | null>(null);
+  // P5-3 — share-code export + import-from-code.
+  const [shareCode, setShareCode] = useState("");
+  const [codeInput, setCodeInput] = useState("");
+  const [codeImportName, setCodeImportName] = useState("");
+  const [codeError, setCodeError] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
     call<BundleInfo[]>("marketplace_list_bundles")
@@ -119,8 +130,70 @@ export default function Marketplace() {
     try {
       const m = await call<BundleManifest>("marketplace_get_manifest", { bundle_id: b.id });
       setPreview({ bundle: b, manifest: m });
+      // P5-2 — render the pack's first media asset (wallpaper, video cover,
+      // lock-screen image, or thumbnail) as an inline image preview.
+      setPreviewImg(null);
+      const asset =
+        m.thumbnail ||
+        m.components.find((c) => c.type === "wallpaper")?.asset ||
+        m.components.find((c) => c.type === "video")?.asset ||
+        m.components.find((c) => c.type === "lock_screen")?.asset;
+      if (asset) {
+        call<string>("marketplace_preview_asset", { bundle_id: b.id, asset })
+          .then(setPreviewImg)
+          .catch(() => setPreviewImg(null));
+      }
     } catch (e) {
       toast(errorCopy(e), "err");
+    }
+  };
+
+  // P5-3 — copy the pack's share code (declarative look only).
+  const sharePackCode = async (b: BundleInfo) => {
+    try {
+      const m = await call<BundleManifest>("marketplace_get_manifest", { bundle_id: b.id });
+      const code = encodePackCode(m);
+      if (!code) {
+        toast("This pack has no scene to encode — nothing to share as a code", "err");
+        return;
+      }
+      await navigator.clipboard.writeText(code);
+      setShareCode(code);
+      toast("Pack code copied — paste it to a friend");
+    } catch (e) {
+      toast(errorCopy(e), "err");
+    }
+  };
+
+  // P5-3 — import a pack from a share code (creates a declarative pack).
+  const importFromCode = async () => {
+    const err = packCodeError(codeInput);
+    setCodeError(err);
+    if (err || !codeInput.trim()) return;
+    if (!codeImportName.trim()) {
+      setCodeError("Give the imported pack a name first.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const components = decodePackCode(codeInput);
+      if (!components) {
+        setCodeError("That code didn't check out — check for typos.");
+        return;
+      }
+      const b = await call<BundleInfo>("marketplace_import_components", {
+        name: codeImportName.trim(),
+        components,
+      });
+      toast(`Imported "${b.name}" from code — review it below`);
+      setCodeInput("");
+      setCodeImportName("");
+      setCodeError(null);
+      refresh();
+    } catch (e) {
+      setCodeError(errorCopy(e));
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -163,7 +236,7 @@ export default function Marketplace() {
       <div className="grid gap-5 lg:grid-cols-2">
         <Section
           title="Export your look"
-          subtitle="Capture accent, mode, wallpaper, taskbar, cursor & lock screen into a shareable pack"
+          subtitle="Capture accent, mode, wallpaper, video, scene, sounds, fonts, taskbar, cursor & lock screen into a shareable pack"
         >
           <div className="flex gap-2">
             <input
@@ -181,7 +254,7 @@ export default function Marketplace() {
           </p>
         </Section>
 
-        <Section title="Import a pack" subtitle="Point at a .reforgepack folder on disk">
+        <Section title="Import a pack" subtitle="Point at a .reforgepack folder, or paste a 20-char share code">
           <div className="flex gap-2">
             <input
               className="input"
@@ -192,6 +265,33 @@ export default function Marketplace() {
             <button className="btn-ghost shrink-0" onClick={importBundle} disabled={busy || !importPath.trim()}>
               <IconUpload size={14} /> Import
             </button>
+          </div>
+          <div className="mt-3 space-y-2 rounded-xl border border-[var(--border-default)] bg-[var(--surface-overlay)] p-3">
+            <div className="text-2xs font-medium uppercase tracking-wider text-[var(--text-tertiary)]">
+              Import from share code (P5-3)
+            </div>
+            <div className="flex gap-2">
+              <input
+                className="input"
+                placeholder="20-character pack code (digits + A–Z)"
+                value={codeInput}
+                onChange={(e) => { setCodeInput(e.target.value); setCodeError(null); }}
+                spellCheck={false}
+              />
+              <input
+                className="input w-40 shrink-0"
+                placeholder="Pack name"
+                value={codeImportName}
+                onChange={(e) => setCodeImportName(e.target.value)}
+              />
+              <button className="btn-ghost shrink-0" onClick={importFromCode} disabled={busy || !codeInput.trim()}>
+                <IconCheck size={14} /> Import code
+              </button>
+            </div>
+            {codeError && <p className="text-2xs text-[var(--status-danger-text)]">{codeError}</p>}
+            <p className="text-2xs text-[var(--text-tertiary)]">
+              Codes carry the look's settings (accent, mode, taskbar, scene) — media files travel in the pack file itself.
+            </p>
           </div>
           <p className="mt-2 text-2xs text-[var(--text-tertiary)]">
             Packs are declarative data only — executable or script content is rejected on import.
@@ -293,8 +393,11 @@ export default function Marketplace() {
                   <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-[var(--text-tertiary)]" title={b.description}>
                     {b.description}
                   </p>
-                  <div className="mt-1 text-2xs text-[var(--text-tertiary)]">
-                    {b.component_count} component(s)
+                  <div className="mt-1 flex items-center gap-2 text-2xs text-[var(--text-tertiary)]">
+                    <span>{b.component_count} component(s)</span>
+                    {b.applied_count > 0 && (
+                      <span className="badge badge-neutral">applied {b.applied_count}×</span>
+                    )}
                   </div>
 
                   {/* Actions */}
@@ -304,6 +407,13 @@ export default function Marketplace() {
                       onClick={() => showPreview(b)}
                     >
                       <IconEye size={12} /> Preview
+                    </button>
+                    <button
+                      className="btn-ghost btn-sm"
+                      onClick={() => sharePackCode(b)}
+                      title="Copy a share code for this pack's look (settings only)"
+                    >
+                      <IconCopy size={12} />
                     </button>
                     <button
                       className="btn-primary btn-sm flex-1"
@@ -337,11 +447,16 @@ export default function Marketplace() {
       >
         {preview && (
           <div className="space-y-4">
-            {/* Pack header with gradient */}
+            {/* Pack header with gradient + real media preview (P5-2) */}
             <div
               className="overflow-hidden rounded-xl px-4 py-4"
               style={{ background: packGradient(preview.manifest) }}
             >
+              {previewImg && (
+                <div className="look-artwork mb-3 overflow-hidden rounded-lg border border-white/10">
+                  <img src={previewImg} alt={`${preview.manifest.name} preview`} className="h-36 w-full object-cover" />
+                </div>
+              )}
               <div className="text-sm font-semibold text-[var(--text-primary)]">
                 {preview.manifest.name}{" "}
                 <span className="text-xs font-normal text-[var(--text-tertiary)]">
@@ -350,6 +465,9 @@ export default function Marketplace() {
               </div>
               <div className="text-2xs text-[var(--text-tertiary)]">
                 by {preview.manifest.author}
+                {preview.manifest.schema_version && preview.manifest.schema_version >= 2 && (
+                  <span className="badge badge-neutral ml-2">manifest v{preview.manifest.schema_version}</span>
+                )}
               </div>
               {preview.manifest.description && (
                 <p className="mt-1 text-xs text-[var(--text-secondary)]">
@@ -379,6 +497,30 @@ export default function Marketplace() {
               </div>
             </div>
 
+            {preview.manifest.changelog && preview.manifest.changelog.length > 0 && (
+              <div>
+                <div className="mb-1.5 text-2xs font-medium uppercase tracking-wider text-[var(--text-tertiary)]">What's new</div>
+                <ul className="space-y-0.5 text-xs text-[var(--text-secondary)]">
+                  {preview.manifest.changelog.map((line, i) => (
+                    <li key={i}>· {line}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {shareCode && (
+              <div className="rounded-lg border border-[var(--border-default)] bg-[var(--surface-overlay)] px-3 py-2 text-xs">
+                <div className="text-2xs font-medium uppercase tracking-wider text-[var(--text-tertiary)]">Share code (settings only)</div>
+                <div className="mt-1 flex items-center gap-2">
+                  <code className="break-all font-mono text-[var(--accent-hex)]">{shareCode}</code>
+                  <button
+                    className="btn-ghost btn-sm shrink-0"
+                    onClick={() => { navigator.clipboard.writeText(shareCode); toast("Code copied"); }}
+                  >
+                    <IconCopy size={11} /> Copy
+                  </button>
+                </div>
+              </div>
+            )}
             <p className="text-2xs text-[var(--text-tertiary)]">
               Applying records one combined undo entry — the entire look reverts from{" "}
               <b>History</b> in one click.

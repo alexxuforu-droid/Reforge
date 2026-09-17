@@ -29,6 +29,17 @@ function relLum(hex: string) {
   return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
 }
 
+describe("Premium motion safeguards", () => {
+  it("limits playful pointer effects to fine pointers with motion enabled", () => {
+    expect(css).toContain("@media (prefers-reduced-motion: no-preference) and (hover: hover) and (pointer: fine)");
+    expect(css).toContain(".look-artwork:hover");
+  });
+
+  it("provides static reduced-motion fallbacks for every new spatial effect", () => {
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.look-artwork/);
+  });
+});
+
 describe("S13.4 contrast snapshot (index.css)", () => {
   it("light --text-tertiary is ≥ #6B6B6B (darker or equal)", () => {
     const lightRoot = css.slice(0, css.indexOf(":root:not([data-theme"));
