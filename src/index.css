@@ -751,11 +751,38 @@ textarea:focus-visible {
   .look-artwork:hover {
     transform: perspective(900px) rotateX(2deg) rotateY(-3deg) scale(1.015);
   }
+  /* Spotlight — accent-tinted light following the cursor inside cards. Only on
+     fine pointers with motion allowed; keyboard focus gets a border glow
+     instead so the affordance exists without a pointer. */
+  .spotlight-card {
+    position: relative;
+  }
+  .spotlight-card::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: radial-gradient(
+      200px circle at var(--spot-x, 50%) var(--spot-y, 50%),
+      rgba(var(--accent), 0.14),
+      transparent 70%
+    );
+    opacity: 0;
+    transition: opacity 180ms var(--ease-out-expo);
+    pointer-events: none;
+  }
+  .spotlight-card:hover::after,
+  .spotlight-card:focus-within::after {
+    opacity: 1;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .look-artwork {
     transform: none !important;
     transition: none !important;
+  }
+  .spotlight-card::after {
+    content: none !important;
   }
 }
 

@@ -351,10 +351,15 @@ export default function Marketplace() {
         ) : (
           <div className="grid gap-4 sm:grid-cols-2">
             {bundles.map((b) => (
-              <div
-                key={b.id}
-                className="group overflow-hidden rounded-xl border border-[var(--border-default)] bg-[var(--surface-overlay)] transition-colors hover:border-[var(--border-accent)]"
-              >
+                <div
+                  key={b.id}
+                  className="spotlight-card group overflow-hidden rounded-xl border border-[var(--border-default)] bg-[var(--surface-overlay)] transition-colors hover:border-[var(--border-accent)]"
+                  onPointerMove={(event) => {
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    event.currentTarget.style.setProperty("--spot-x", `${event.clientX - rect.left}px`);
+                    event.currentTarget.style.setProperty("--spot-y", `${event.clientY - rect.top}px`);
+                  }}
+                >
                 {/* Pack thumbnail — flat neutral surface (no decorative gradient, Standard B §1) */}
                 <div
                   className="relative h-28 w-full bg-[var(--surface-active)]"
