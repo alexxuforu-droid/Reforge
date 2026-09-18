@@ -719,6 +719,7 @@ export default function MakeoverSession() {
       {/* ---- 5. Done ---- */}
       {step === "done" && (
         <Section title="Step 5 · Done" subtitle="Your makeover summary">
+          <p aria-live="polite" className="animate-fade-in text-sm text-[var(--text-secondary)]">Your new look is ready — every change below reverts from History.</p>
           <div aria-live="polite" className="grid gap-3 sm:grid-cols-3">
             <div className="card animate-slide-up p-4" style={{ animationDelay: "0ms" }}>
               <div className="text-2xs font-medium uppercase tracking-wider text-[var(--text-tertiary)]">Protection</div>
