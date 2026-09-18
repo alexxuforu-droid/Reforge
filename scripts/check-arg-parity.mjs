@@ -63,7 +63,14 @@ for (const f of walk(join(ROOT, "src-tauri/src"))) {
 }
 
 // ---- 2. Mock cases ----------------------------------------------------------
-const mockSrc = readFileSync(join(ROOT, "src/lib/mock.ts"), "utf8");
+// V2 pillar 2a: the mock is split (dispatcher + src/lib/mock/*.ts handlers).
+// Concatenate all of them; handler bodies overwrite the dispatcher's arg-less
+// stubs in the Map (same command names), so parity keeps checking real reads.
+const mockFiles = [
+  join(ROOT, "src/lib/mock.ts"),
+  ...walk(join(ROOT, "src/lib/mock")).filter((f) => f.endsWith(".ts")),
+];
+const mockSrc = mockFiles.map((f) => readFileSync(f, "utf8")).join("\n");
 const mock = new Map();
 const caseRe = /case "([\w]+)":/g;
 let cm;

@@ -1,5 +1,5 @@
 {
-  "ts": "2026-09-18T16:35:55.630Z",
+  "ts": "2026-09-18T16:54:20.702Z",
   "scanFixtureMb": 120,
   "boot": {
     "metric": "boot",
@@ -110,7 +110,7 @@
         }
       },
       "totalRoundTripSites": 275,
-      "getUndoLogSites": 5
+      "getUndoLogSites": 4
     },
     "payload": {
       "fullLogBytes": 336802,
@@ -125,9 +125,9 @@
     "files": 260,
     "scannedBytes": 125829120,
     "scannedGb": 0.12,
-    "secs": 0.18,
-    "gbPerSec": 0.66,
-    "filesPerSec": 1462,
+    "secs": 0.15,
+    "gbPerSec": 0.79,
+    "filesPerSec": 1761,
     "groups": 10,
     "cascade": "size-prefilter(1MB) -> quick(len+64K head+64K tail) -> full(sha256)",
     "engine": "node-sequential (before: Rust WalkDir sequential; target: rayon parallel walker)"

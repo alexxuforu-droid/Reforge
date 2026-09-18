@@ -34,7 +34,14 @@ export function measureRoundTrips() {
     perView[f] = c;
     total += c.total;
   }
-  // get_undo_log fan-out: how many files fetch the full log with blobs
+  // get_undo_log fan-out: how many files fetch the full log with blobs.
+  // V2 pillar 2a: the mock implementation (dispatcher + src/lib/mock/
+  // handlers) *serves* the command — it is not a caller. Exclude it, and
+  // exclude the handlers' internal `call()` recursion the same way.
+  const isMockImpl = (p) => {
+    const n = p.replace(/\\/g, "/");
+    return n.endsWith("src/lib/mock.ts") || n.includes("src/lib/mock/");
+  };
   let undoCallSites = 0;
   const grepDirs = [join(root, "src", "views"), join(root, "src", "lib"), join(root, "src", "features")];
   const walk = (d) => {
@@ -43,6 +50,7 @@ export function measureRoundTrips() {
       const p = join(d, e.name);
       if (e.isDirectory()) { hits += walk(p); continue; }
       if (!/\.(tsx?)$/.test(e.name) || e.name.includes(".test.")) continue;
+      if (isMockImpl(p)) continue;
       const src = readFileSync(p, "utf8");
       hits += (src.match(/get_undo_log/g) || []).length;
     }
