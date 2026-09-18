@@ -782,6 +782,15 @@ textarea:focus-visible {
   .spotlight-card:focus-within::after {
     opacity: 1;
   }
+  .widget-dock {
+    transition: transform 180ms var(--ease-out-expo), border-color 180ms var(--ease-out-expo);
+  }
+  .widget-dock:hover {
+    transform: translateY(-2px);
+  }
+  .widget-dock button:active {
+    transform: scale(0.97);
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .look-artwork {
