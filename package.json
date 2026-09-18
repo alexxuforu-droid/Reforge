@@ -11,6 +11,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:ci": "bash scripts/test-ci.sh",
+    "test:e2e": "playwright test",
     "lint": "eslint src --max-warnings 0",
     "tauri": "tauri",
     "test:a11y": "node scripts/check-4px-grid.mjs && node scripts/check-clipping.mjs && node scripts/check-focus-visible.mjs && node scripts/check-contrast.mjs"
