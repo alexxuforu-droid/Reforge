@@ -246,6 +246,7 @@ const store = {
   undo: [] as UndoEntry[],
   snapshots: [] as Snapshot[],
   reports: [] as MaintenanceReport[],
+  stagingTrashBytes: 0 as number,
   bundles: [
     {
       id: "studio-blue",
@@ -806,16 +807,18 @@ async function mockCallInner<T>(cmd: string, args: Record<string, unknown> = {})
       } as T;
     case "remove_duplicates": {
       const n = (args.paths as string[]).length;
+      store.stagingTrashBytes += n * 2_400_000;
       pushUndo("duplicates_removed", `Moved ${n} duplicate files to staging trash`, true, {
         moved: (args.paths as string[]).map((p) => ({ from: p, to: `${p}.reforge-trash` })),
       });
       return `Moved ${n} files to staging trash (reversible)` as T;
     }
     case "empty_trash":
-      pushUndo("trash_emptied", "Permanently deleted staged duplicates", false, { freed: 3.4 * 1024 ** 3 });
-      return "Emptied staging trash — freed 3.4 GB" as T;
+      pushUndo("trash_emptied", "Permanently deleted staged duplicates", false, { freed: store.stagingTrashBytes });
+      store.stagingTrashBytes = 0;
+      return "Emptied staging trash — trash is now empty" as T;
     case "trash_size":
-      return 3.4 * 1024 ** 3 as T;
+      return store.stagingTrashBytes as T;
     case "scan_storage":
       return [
         { name: "Downloads", path: `${args.dir}\\Downloads`, size: 18.2 * 1024 ** 3, file_count: 4120 },
