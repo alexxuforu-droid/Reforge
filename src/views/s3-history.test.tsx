@@ -147,3 +147,26 @@ describe("S3.12 History depth", () => {
     expect(screen.queryByRole("button", { name: /revert 2 selected/i })).not.toBeInTheDocument();
   });
 });
+
+describe("X-4 while-you-were-away panel", () => {
+  it("lists changes newer than the previous launch marker", async () => {
+    localStorage.setItem("reforge-prev-launch", String(Date.now() - 5400_000));
+    render(<History />);
+    await waitFor(() => expect(screen.getByText("While you were away")).toBeInTheDocument(), { timeout: 5000 });
+    expect(screen.getByText(/3 changes since your last visit/)).toBeInTheDocument();
+    localStorage.removeItem("reforge-prev-launch");
+  });
+
+  it("stays hidden without a marker or with nothing new", async () => {
+    localStorage.removeItem("reforge-prev-launch");
+    const { unmount } = render(<History />);
+    await waitFor(() => expect(screen.getByText(/Nothing logged yet|Makeover History Timeline/)).toBeInTheDocument(), { timeout: 5000 });
+    expect(screen.queryByText("While you were away")).not.toBeInTheDocument();
+    unmount();
+    localStorage.setItem("reforge-prev-launch", String(Date.now() + 60_000));
+    render(<History />);
+    await waitFor(() => expect(screen.getByText(/Makeover History Timeline/)).toBeInTheDocument(), { timeout: 5000 });
+    expect(screen.queryByText("While you were away")).not.toBeInTheDocument();
+    localStorage.removeItem("reforge-prev-launch");
+  });
+});

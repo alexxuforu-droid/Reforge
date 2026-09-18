@@ -200,6 +200,17 @@ export default function App() {
   // Welcome wizard shows exactly once, ever. The flag is persisted by the Rust
   // backend (data_dir/onboarding.json) so it survives webview origin changes;
   // localStorage is only a fallback for browser preview (no backend).
+  // X-4 — launch markers for the History "while you were away" panel: keep
+  // the previous launch time before overwriting with now.
+  useEffect(() => {
+    try {
+      const prev = localStorage.getItem("reforge-last-launch");
+      if (prev) localStorage.setItem("reforge-prev-launch", prev);
+      localStorage.setItem("reforge-last-launch", String(Date.now()));
+    } catch {
+      /* storage unavailable — away panel stays hidden */
+    }
+  }, []);
   useEffect(() => {
     let cancelled = false;
     const maybeOpen = () => {

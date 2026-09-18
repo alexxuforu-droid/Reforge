@@ -1,13 +1,48 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { errorCopy, call, callWithTimeout, fmt, fmtAge } from "../lib/api";
 import { useLoad } from "../lib/useLoad";
+import { useI18n, type TFunc } from "../i18n";
 import type { MaintenanceReport, Snapshot, UndoEntry } from "../lib/types";
 import { InlineAlert, KindChip, Modal, Section, Select, Toggle, toast } from "../components/ui";
 import { onAction } from "../lib/events";
 import { UNDO_KINDS } from "../lib/undo-kinds";
 import { IconUndo, IconClock, IconPlus, IconSearch, IconSparkles } from "../components/icons";
 
+// X-4 — "while you were away": changes logged after the previous launch
+// marker (written by App at startup). Hidden when there is no marker
+// (first run) or nothing happened while away.
+function AwayPanel({ entries, t }: { entries: UndoEntry[]; t: TFunc }) {
+  const { lang } = useI18n();
+  const [prevLaunch] = useState(() => {
+    try {
+      const v = Number(localStorage.getItem("reforge-prev-launch"));
+      return Number.isFinite(v) && v > 0 ? v : null;
+    } catch {
+      return null;
+    }
+  });
+  if (prevLaunch === null) return null;
+  const away = entries.filter((e) => e.ts > prevLaunch);
+  if (away.length === 0) return null;
+  return (
+    <div className="animate-fade-in mb-4 rounded-xl border border-[var(--border-accent)] bg-[var(--surface-selected)] px-4 py-3">
+      <div className="text-sm font-medium text-[var(--text-primary)]">{t("history.away.title")}</div>
+      <div className="mt-0.5 text-xs text-[var(--text-secondary)]">
+        {t("history.away.sub", { count: away.length, plural: away.length === 1 ? "" : lang === "de" ? "en" : "s" })}
+      </div>
+      <ul className="mt-1.5 space-y-0.5">
+        {away.slice(0, 3).map((e) => (
+          <li key={e.id} className="truncate text-2xs text-[var(--text-tertiary)]" title={e.description}>
+            · {e.description} ({fmtAge(e.ts)})
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export default function History() {
+  const { t } = useI18n();
   const [undo, setUndo] = useState<UndoEntry[]>([]);
   const [reverting, setReverting] = useState<string | null>(null);
   const [freshOpen, setFreshOpen] = useState(false);
@@ -296,6 +331,7 @@ export default function History() {
           )
         }
       >
+        <AwayPanel entries={undo} t={t} />
         {/* S3.12 — filters */}
         <div className="mb-4 flex flex-wrap items-center gap-3">
           <div className="relative min-w-0 flex-1 basis-52">

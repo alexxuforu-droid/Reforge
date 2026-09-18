@@ -127,6 +127,8 @@
   "motion.lookPrev": "Vorheriger Look",
   "motion.lookNext": "Nächster Look",
   "motion.empty": "Leer",
+  "history.away.title": "Während deiner Abwesenheit",
+  "history.away.sub": "{count} Änderung{plural} seit deinem letzten Besuch",
   "dashboard.risk": "Risiko",
   "dashboard.risk.sub": "{startup} Autostart-Apps · {flags} markierte Einträge · Defender {defender}",
   "gaming.applooks": "Looks pro App",

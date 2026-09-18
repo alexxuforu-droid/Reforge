@@ -127,6 +127,8 @@
   "motion.lookPrev": "Look anterior",
   "motion.lookNext": "Look siguiente",
   "motion.empty": "Vacío",
+  "history.away.title": "Mientras estabas fuera",
+  "history.away.sub": "{count} cambio{plural} desde tu última visita",
   "dashboard.risk": "Riesgo",
   "dashboard.risk.sub": "{startup} apps de inicio · {flags} elementos marcados · Defender {defender}",
   "gaming.applooks": "Looks por app",
