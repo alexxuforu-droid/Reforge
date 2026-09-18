@@ -8,6 +8,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import Makeover from "./Makeover";
 import History from "./History";
 import Marketplace from "./Marketplace";
+import Organize from "./Organize";
 
 const { callMock, callWithTimeoutMock } = vi.hoisted(() => ({
   callMock: vi.fn(),
@@ -83,6 +84,54 @@ describe("Marketplace featured looks", () => {
     fireEvent.click(within(carousel).getByRole("button", { name: "Next look" }));
     expect(within(carousel).getByText("Forest")).toBeInTheDocument();
     expect(callMock).not.toHaveBeenCalledWith("marketplace_apply", expect.anything());
+  });
+});
+
+describe("History keyboard list", () => {
+  const entries = [
+    { id: "e1", ts: Date.now(), kind: "accent", description: "Accent changed", revertible: true, undone: false, data: {} },
+    { id: "e2", ts: Date.now(), kind: "mode", description: "Mode changed", revertible: true, undone: false, data: {} },
+  ];
+
+  it("arrow keys move between rows and Enter reverts the focused row", async () => {
+    callMock.mockImplementation(async (cmd: string) => cmd === "get_undo_log" ? entries : zeroDataCall(cmd));
+    render(<History />);
+    const list = await screen.findByRole("list");
+    (list as HTMLElement).focus();
+    fireEvent.keyDown(list, { key: "ArrowDown" });
+    const items = within(list as HTMLElement).getAllByRole("listitem");
+    expect(items).toHaveLength(2);
+    expect(document.activeElement).toBe(items[0]);
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(items[1]);
+    fireEvent.keyDown(document.activeElement!, { key: "Enter" });
+    await waitFor(() => expect(callMock).toHaveBeenCalledWith("revert_entry", { id: "e2" }));
+  });
+});
+
+describe("Organize smart-folder disclosure", () => {
+  const folders = [
+    { id: "sf1", name: "Invoices", root: "C:\\Docs", extensions: ["pdf"], min_age_days: null, created_at: 1 },
+  ];
+  const hits = [
+    { path: "C:\\Docs\\a.pdf", size: 10, modified: 1 },
+    { path: "C:\\Docs\\b.pdf", size: 20, modified: 2 },
+  ];
+
+  it("expands a folder row to preview its hits inline", async () => {
+    callMock.mockImplementation(async (cmd: string) =>
+      cmd === "list_smart_folders" ? folders
+      : cmd === "run_smart_folder" ? hits
+      : zeroDataCall(cmd));
+    render(<Organize />);
+    const run = await screen.findByRole("button", { name: "Run Invoices" });
+    expect(run).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(run);
+    await waitFor(() => expect(run).toHaveAttribute("aria-expanded", "true"));
+    expect(screen.getByText(/2 files?/)).toBeInTheDocument();
+    expect(screen.getByTitle("C:\\Docs\\a.pdf")).toBeInTheDocument();
+    fireEvent.click(run);
+    await waitFor(() => expect(run).toHaveAttribute("aria-expanded", "false"));
   });
 });
 

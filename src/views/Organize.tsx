@@ -57,6 +57,7 @@ export default function Organize() {
   const [sfRoot, _setSfRoot] = useState(HOME);
   const [sfExt, setSfExt] = useState("");
   const [sfHits, setSfHits] = useState<SmartHit[] | null>(null);
+  const [sfOpenId, setSfOpenId] = useState<string | null>(null);
   const [archiveDir, setArchiveDir] = useState(HOME + "\\Downloads");
   const [archiveMonths, setArchiveMonths] = useState(6);
   const [archivePlan, setArchivePlan] = useState<ArchiveMove[] | null>(null);
@@ -304,9 +305,15 @@ export default function Organize() {
   };
 
   const runSmartFolder = async (sf: SmartFolder) => {
+    if (sfOpenId === sf.id) {
+      setSfOpenId(null);
+      setSfHits(null);
+      return;
+    }
     try {
       const hits = await call<SmartHit[]>("run_smart_folder", { id: sf.id });
       setSfHits(hits);
+      setSfOpenId(sf.id);
     } catch (e) {
       toast(errorCopy(e), "err");
     }
@@ -787,28 +794,32 @@ export default function Organize() {
           </div>
           <div className="space-y-1.5">
             {(smartFolders ?? []).map((sf) => (
-              <div
-                key={sf.id}
-                className="flex items-center gap-2 rounded-lg bg-[var(--surface-overlay)] px-3 py-2"
-              >
-                <IconFolder size={14} className="folder-icon text-[var(--text-tertiary)]" />
-                <span className="flex-1 text-xs text-[var(--text-secondary)]">{sf.name}</span>
-                <button
-                  className="btn-ghost btn-sm"
-                  onClick={() => runSmartFolder(sf)}
-                >
-                  Run
-                </button>
+              <div key={sf.id}>
+                <div className="flex items-center gap-2 rounded-lg bg-[var(--surface-overlay)] px-3 py-2">
+                  <IconFolder size={14} className="folder-icon text-[var(--text-tertiary)]" />
+                  <span className="flex-1 text-xs text-[var(--text-secondary)]">{sf.name}</span>
+                  <button
+                    className="btn-ghost btn-sm"
+                    aria-expanded={sfOpenId === sf.id}
+                    aria-label={`Run ${sf.name}`}
+                    onClick={() => runSmartFolder(sf)}
+                  >
+                    Run
+                  </button>
+                </div>
+                {sfOpenId === sf.id && sfHits && (
+                  <div aria-live="polite" className="animate-fade-in ml-6 mt-1 space-y-1 border-l-2 border-[var(--border-accent)] pl-3">
+                    <div className="text-2xs font-medium text-[var(--text-secondary)]">
+                      {sfHits.length} file{sfHits.length === 1 ? "" : "s"}
+                    </div>
+                    {sfHits.slice(0, 5).map((h) => (
+                      <div key={h.path} className="truncate text-2xs text-[var(--text-tertiary)]" title={h.path}>{h.path}</div>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>
-          {sfHits && (
-            <div aria-live="polite" className="animate-fade-in mt-3 space-y-1">
-              {sfHits.map((h) => (
-                <div key={h.path} className="truncate text-2xs text-[var(--text-tertiary)]" title={h.path}>{h.path}</div>
-              ))}
-            </div>
-          )}
         </Section>
 
         <Section title="Archive old files" subtitle="Zip files older than N months into a dated archive">

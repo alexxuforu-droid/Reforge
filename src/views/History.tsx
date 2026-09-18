@@ -347,7 +347,29 @@ export default function History() {
                     {entries.length} change{entries.length === 1 ? "" : "s"}
                   </span>
                 </div>
-                <div className="space-y-2" role="list">
+                <div
+                  className="space-y-2"
+                  role="list"
+                  tabIndex={0}
+                  aria-label={`Changes on ${day}`}
+                  onKeyDown={(e) => {
+                    if (e.key !== "ArrowDown" && e.key !== "ArrowUp" && e.key !== "Home" && e.key !== "End" && e.key !== "Enter") return;
+                    e.stopPropagation(); // scoped to this list — never trap global keys
+                    const rows = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('[role="listitem"]'));
+                    if (rows.length === 0) return;
+                    const at = rows.indexOf(document.activeElement as HTMLElement);
+                    if (e.key === "Enter") {
+                      const btn = (document.activeElement as HTMLElement | null)?.querySelector<HTMLButtonElement>("button:not([disabled])");
+                      btn?.click();
+                      return;
+                    }
+                    e.preventDefault();
+                    const next = e.key === "ArrowDown" ? (at + 1) % rows.length
+                      : e.key === "ArrowUp" ? (at - 1 + rows.length) % rows.length
+                      : e.key === "Home" ? 0 : rows.length - 1;
+                    rows[next].focus();
+                  }}
+                >
                   {entries.map((e) => {
                     const checkable = e.revertible && !e.undone;
                     const checked = selected.has(e.id);
@@ -355,6 +377,7 @@ export default function History() {
                       <div
                         key={e.id}
                         role="listitem"
+                        tabIndex={-1}
                         className={`animate-fade-in flex items-center gap-3 rounded-xl border px-4 py-3 transition-colors ${
                           selectMode && checked
                             ? "border-[var(--border-accent)] bg-[var(--surface-selected)]"
