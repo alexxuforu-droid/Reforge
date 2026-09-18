@@ -123,6 +123,8 @@
   "settings.advanced.subtitle": "Alle Konfigurationsdateien von Reforge – sichern oder manuell bearbeiten (die App liest sie beim Start neu)",
   "settings.advanced.loading": "Inventar wird geladen …",
   "settings.advanced.missing": "noch nicht erstellt",
+  "settings.advanced.registry": "Registrierung (schreibgeschützt)",
+  "settings.advanced.registry.subtitle": "Vier Design-Werte, die Reforge aus Windows liest – hier gezeigt, nie geschrieben",
 
   "power.title": "Energie & Akku",
   "power.subtitle": "Plan, Bildschirm-Timeouts und Akkugesundheit — jede Änderung aus dem Verlauf reversibel",

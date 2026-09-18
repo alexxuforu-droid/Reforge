@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { errorCopy, call, fmt, fmtAge, IS_TAURI, swallow } from "../lib/api";
 import { useLoad } from "../lib/useLoad";
 import { getVersion } from "@tauri-apps/api/app";
-import type { AutomationConfig, BuildInfo, BundleInfo, CapabilityMatrix, ConfigFile, MaintenanceRun, ProfileExport, StagedUpdate, StorageConfig, StyleScheduleEntry, SystemInfo, TranscodeConfig, UpdateCheck, UpdateConfig } from "../lib/types";
+import type { AutomationConfig, BuildInfo, BundleInfo, CapabilityMatrix, ConfigFile, MaintenanceRun, ProfileExport, RegistryValue, StagedUpdate, StorageConfig, StyleScheduleEntry, SystemInfo, TranscodeConfig, UpdateCheck, UpdateConfig } from "../lib/types";
 import { InlineAlert, PageHeader, Section, Select, SettingRow, StatusDot, Toggle, toast } from "../components/ui";
 import { onAction } from "../lib/events";
 import { ALL_STYLES } from "../styles";
@@ -37,6 +37,8 @@ export default function Settings() {
 
   // X-7 — power-user config inventory (read-only file list).
   const { data: configFiles, error: configFilesError } = useLoad<ConfigFile[]>("list_config_files");
+  // X-7 — read-only registry view (fixed allowlist, never writes).
+  const { data: registryValues, error: registryError } = useLoad<RegistryValue[]>("list_registry_values");
 
   // S12.1 — auto-updater: check → verified download → "restart to update" banner.
   const { data: updateCfg, refresh: refreshUpdateCfg } = useLoad<UpdateConfig>("get_update_config");
@@ -1106,6 +1108,19 @@ export default function Settings() {
             ))}
           </div>
         )}
+        <div className="mt-4">
+          <div className="mb-1 text-2xs font-medium uppercase tracking-wider text-[var(--text-tertiary)]">{t("settings.advanced.registry")}</div>
+          <div className="mb-2 text-2xs text-[var(--text-tertiary)]">{t("settings.advanced.registry.subtitle")}</div>
+          {registryError && <InlineAlert>{registryError}</InlineAlert>}
+          <div className="space-y-1">
+            {(registryValues ?? []).map((r) => (
+              <div key={`${r.path}!${r.name}`} className="flex items-baseline justify-between gap-3 border-b border-[var(--border-subtle)] py-1 last:border-0">
+                <span className="min-w-0 truncate font-mono text-xs text-[var(--text-secondary)]" title={`${r.path}!${r.name}`}>{r.name}</span>
+                <span className="shrink-0 font-mono text-xs text-[var(--text-primary)]">{r.value} <span className="text-[var(--text-tertiary)]">{r.kind}</span></span>
+              </div>
+            ))}
+          </div>
+        </div>
       </Section>
 
       {/* About */}

@@ -766,6 +766,14 @@ export interface ConfigFile {
   bytes: number;
 }
 
+// X-7 — read-only registry view (system::list_registry_values, allowlisted).
+export interface RegistryValue {
+  path: string;
+  name: string;
+  value: string;
+  kind: string;
+}
+
 // ---- Shell / taskbar ----
 
 export interface TaskbarState {

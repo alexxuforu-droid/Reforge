@@ -2157,6 +2157,15 @@ async function mockCallInner<T>(cmd: string, args: Record<string, unknown> = {})
         ["onboarding.json", "Welcome wizard seen flag"],
         ["schema_version.json", "State migration version"],
       ].map(([name, description], i) => ({ name, description, exists: true, bytes: 512 + i * 128 })) as T;
+    case "list_registry_values":
+      // X-7 — mirrors system::REGISTRY_ALLOWLIST so the preview shows the
+      // same four readable values.
+      return [
+        { path: "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", name: "AppsUseLightTheme", value: "0", kind: "DWORD" },
+        { path: "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", name: "ColorPrevalence", value: "1", kind: "DWORD" },
+        { path: "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced", name: "TaskbarAl", value: "1", kind: "DWORD" },
+        { path: "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced", name: "TaskbarSi", value: "1", kind: "DWORD" },
+      ] as T;
     case "get_update_config": {
       // Normalize with defaults so a config persisted before check_on_startup
       // existed never surfaces `undefined` to the UI.

@@ -123,6 +123,8 @@
   "settings.advanced.subtitle": "Every config file Reforge owns — back them up or hand-edit them (the app re-reads on launch)",
   "settings.advanced.loading": "Loading config inventory…",
   "settings.advanced.missing": "not created yet",
+  "settings.advanced.registry": "Registry (read-only)",
+  "settings.advanced.registry.subtitle": "Four look-and-feel values Reforge reads from Windows — shown here, never written",
 
   "power.title": "Power & battery",
   "power.subtitle": "Plan, screen-off timers and battery health — every change reversible from History",
