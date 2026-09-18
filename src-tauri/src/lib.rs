@@ -420,6 +420,7 @@ pub fn run() {
             system::get_build_info,
             system::bundle_diagnostics,
             system::list_config_files,
+            system::list_registry_values,
             // palette
             palette::extract_palette,
             // perf

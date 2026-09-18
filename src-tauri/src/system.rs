@@ -396,6 +396,100 @@ pub fn list_config_files(state: State<'_, AppState>) -> Vec<ConfigFile> {
     list_config_files_in(&state.data_dir)
 }
 
+/// X-7 — read-only registry view for power users. Only exact (path, name)
+/// pairs in the allowlist below can be read — arbitrary paths are rejected
+/// before touching the registry. Reads HKCU only; never writes.
+#[derive(Serialize, Clone)]
+pub struct RegistryValue {
+    pub path: String,
+    pub name: String,
+    pub value: String,
+    pub kind: String,
+}
+
+const REGISTRY_ALLOWLIST: &[(&str, &str)] = &[
+    (
+        r"HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
+        "AppsUseLightTheme",
+    ),
+    (
+        r"HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
+        "ColorPrevalence",
+    ),
+    (
+        r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced",
+        "TaskbarAl",
+    ),
+    (
+        r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced",
+        "TaskbarSi",
+    ),
+];
+
+fn render_raw_value(vtype: winreg::enums::RegType, bytes: &[u8]) -> (String, String) {
+    use winreg::enums::RegType;
+    if vtype == RegType::REG_DWORD && bytes.len() >= 4 {
+        let n = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+        return (n.to_string(), "DWORD".into());
+    }
+    if vtype == RegType::REG_SZ || vtype == RegType::REG_EXPAND_SZ {
+        let s = String::from_utf16_lossy(
+            &bytes
+                .chunks(2)
+                .map(|c| u16::from_le_bytes([c[0], *c.get(1).unwrap_or(&0)]))
+                .collect::<Vec<_>>(),
+        )
+        .trim_matches('\0')
+        .to_string();
+        return (s, "SZ".into());
+    }
+    (
+        bytes
+            .iter()
+            .map(|b| format!("{:02x}", b))
+            .collect::<Vec<_>>()
+            .join(" "),
+        format!("{:?}", vtype),
+    )
+}
+
+fn read_registry_value_in(path: &str, name: &str) -> Result<RegistryValue, AppError> {
+    let path = path.trim();
+    let name = name.trim();
+    if !REGISTRY_ALLOWLIST.contains(&(path, name)) {
+        return Err(AppError::Invalid(
+            "Registry path is not in the read-only allowlist.".into(),
+        ));
+    }
+    let subkey = path
+        .strip_prefix("HKCU\\")
+        .ok_or_else(|| AppError::Invalid("Only HKCU paths are readable.".into()))?;
+    let hkcu = winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER);
+    let key = hkcu.open_subkey(subkey).map_err(|e| AppError::Registry {
+        key: path.to_string(),
+        source: e,
+    })?;
+    let raw = key.get_raw_value(name).map_err(|e| AppError::Registry {
+        key: format!("{}!{}", path, name),
+        source: e,
+    })?;
+    let (value, kind) = render_raw_value(raw.vtype, &raw.bytes);
+    Ok(RegistryValue {
+        path: path.to_string(),
+        name: name.to_string(),
+        value,
+        kind,
+    })
+}
+
+#[tauri::command]
+pub fn list_registry_values() -> Vec<RegistryValue> {
+    REGISTRY_ALLOWLIST
+        .iter()
+        .filter_map(|(path, name)| read_registry_value_in(path, name).ok())
+        .collect()
+}
+
 #[cfg(test)]
 mod config_tests {
     use super::*;
@@ -445,5 +539,15 @@ mod config_tests {
         assert!(theme.exists);
         assert_eq!(theme.bytes, 15);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn registry_view_rejects_arbitrary_paths() {
+        assert!(read_registry_value_in(r"HKLM\SOFTWARE\Evil", "x").is_err());
+        assert!(read_registry_value_in(
+            r"HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
+            "AppsUseLightTheme"
+        )
+        .is_ok());
     }
 }
