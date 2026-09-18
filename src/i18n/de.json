@@ -109,5 +109,9 @@
   "a11y.textScale": "Textgröße",
   "a11y.textScale.subtitle": "Größerer Text überall",
   "a11y.signOutNote": "Gilt nach Ab- und erneutem Anmelden.",
-  "a11y.saved": "Bedienungshilfen gespeichert – jederzeit über den Verlauf rückgängig"
+  "a11y.saved": "Bedienungshilfen gespeichert – jederzeit über den Verlauf rückgängig",
+
+  "analytics.title": "Aktivitätstrends",
+  "analytics.subtitle": "Änderungen pro Tag der letzten 2 Wochen – aus deinem lokalen Verlauf gezählt, nichts hochgeladen",
+  "analytics.empty": "Noch keine Aktivität – nimm eine Änderung vor und ihr Tag leuchtet hier auf."
 }

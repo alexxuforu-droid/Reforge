@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { call, fmt, fmtAge } from "../lib/api";
+import { bucketByDay } from "../lib/trends";
 import { useLoad } from "../lib/useLoad";
+import { useI18n } from "../i18n";
 import type { DashboardMetrics, HealthScore, SystemInfo, UndoEntry } from "../lib/types";
 import { InlineAlert, Meter, ScoreRing, Section, StatCard, StatusDot, toast } from "../components/ui";
 import {
@@ -17,6 +19,7 @@ import { hasResumableSession, loadSession, sessionAgeMinutes } from "../lib/sess
 import type { View } from "../App";
 
 export default function Dashboard({ onNavigate = () => {} }: { onNavigate?: (v: View) => void }) {
+  const { t } = useI18n();
   const [health, setHealth] = useState<HealthScore | null>(null);
   const [sys, setSys] = useState<SystemInfo | null>(null);
   // S2.2 — state-critical loads through useLoad: one toast per command per
@@ -37,6 +40,9 @@ export default function Dashboard({ onNavigate = () => {} }: { onNavigate?: (v: 
   }, []);
 
   const recentList = (recent ?? []).slice(0, 5);
+  // X-6 — activity trends from the local undo log (no new collection).
+  const trendBuckets = useMemo(() => bucketByDay(recent ?? [], 14), [recent]);
+  const trendPeak = Math.max(1, ...trendBuckets.map((b) => b.count));
 
   const disk = sys?.disks.length ? [...sys.disks].sort((a, b) => a.free_pct - b.free_pct)[0] : null;
   const ramPct = sys ? ((sys.ram_total - sys.ram_used) / sys.ram_total) * 100 : 0;
@@ -232,6 +238,27 @@ export default function Dashboard({ onNavigate = () => {} }: { onNavigate?: (v: 
                 </span>
                 <span className="shrink-0 text-2xs text-[var(--text-tertiary)]">{fmtAge(e.ts)}</span>
               </div>
+            ))}
+          </div>
+        )}
+      </Section>
+
+      {/* Activity Trends (X-6) — changes per day from your local History */}
+      <Section title={t("analytics.title")} subtitle={t("analytics.subtitle")}>
+        {(recent ?? []).length === 0 ? (
+          <div className="empty-state">
+            {t("analytics.empty")}
+          </div>
+        ) : (
+          <div className="flex h-24 items-end gap-1" role="img" aria-label={`Changes per day for 14 days, busiest day ${trendPeak} changes`}>
+            {trendBuckets.map((b) => (
+              <div
+                key={b.label}
+                title={`${b.label}: ${b.count} change${b.count === 1 ? "" : "s"}`}
+                aria-hidden="true"
+                className="min-w-0 flex-1 rounded-t bg-[var(--accent-hex)] opacity-80"
+                style={{ height: `${Math.max(4, Math.round((b.count / trendPeak) * 100))}%`, opacity: b.count === 0 ? 0.15 : 0.8 }}
+              />
             ))}
           </div>
         )}

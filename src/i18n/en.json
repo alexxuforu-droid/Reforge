@@ -109,5 +109,9 @@
   "a11y.textScale": "Text scale",
   "a11y.textScale.subtitle": "Bigger text everywhere",
   "a11y.signOutNote": "Applies after you sign out and back in.",
-  "a11y.saved": "Accessibility settings saved — revert anytime from History"
+  "a11y.saved": "Accessibility settings saved — revert anytime from History",
+
+  "analytics.title": "Activity trends",
+  "analytics.subtitle": "Changes per day over the last 2 weeks — counted from your local History, nothing uploaded",
+  "analytics.empty": "No activity yet — make a change and its day lights up here."
 }
