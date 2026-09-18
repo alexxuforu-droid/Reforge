@@ -177,7 +177,7 @@ function WidgetCard({ w }: { w: WidgetDef }) {
   };
 
   return (
-    <div className="card flex flex-col p-4" data-testid={`widget-card-${w.id}`}>
+    <div className="card widget-dock flex flex-col p-4" data-testid={`widget-card-${w.id}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -193,7 +193,7 @@ function WidgetCard({ w }: { w: WidgetDef }) {
 
       {w.kind === "on-demand" && w.triggerLabel && (
         <button
-          className="btn btn-primary mt-3 justify-center"
+          className="btn btn-primary mt-3 justify-center transition-transform duration-100 active:scale-95"
           disabled={!on}
           onClick={fire}
           data-testid={`widget-trigger-${w.id}`}
@@ -213,7 +213,7 @@ function WidgetCard({ w }: { w: WidgetDef }) {
             {expanded ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />}
           </button>
           {expanded && (
-            <div className="mt-2 space-y-3">
+            <div className="animate-slide-down mt-2 space-y-3">
               {w.fields.map((f) => (
                 <div key={f.key}>
                   <label className="text-xs font-medium text-[var(--text-primary)]">{f.label}</label>
