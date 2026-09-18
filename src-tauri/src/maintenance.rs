@@ -55,7 +55,17 @@ pub fn get_user_folders() -> Vec<UserFolder> {
 }
 
 #[tauri::command]
-pub fn run_maintenance(state: State<'_, AppState>) -> Result<MaintenanceReport, AppError> {
+/// P3-5 — maintenance sweeps junk + scans the home directories; run the heavy
+/// pass off the main thread (same report shape) so the Tune-up view stays
+/// responsive while it works.
+pub async fn run_maintenance(state: State<'_, AppState>) -> Result<MaintenanceReport, AppError> {
+    let st = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || run_maintenance_inner(&st))
+        .await
+        .map_err(|e| AppError::Command(format!("maintenance aborted: {}", e)))?
+}
+
+fn run_maintenance_inner(state: &AppState) -> Result<MaintenanceReport, AppError> {
     let mut notes = Vec::new();
 
     // 1. junk scan (dry-run — never deletes)
@@ -119,12 +129,12 @@ pub fn run_maintenance(state: State<'_, AppState>) -> Result<MaintenanceReport, 
         notes,
     };
 
-    std::fs::create_dir_all(reports_dir(&state)).map_err(|e| AppError::Command(e.to_string()))?;
-    let path = reports_dir(&state).join(format!("{}.json", report.ts));
+    std::fs::create_dir_all(reports_dir(state)).map_err(|e| AppError::Command(e.to_string()))?;
+    let path = reports_dir(state).join(format!("{}.json", report.ts));
     save_json(&path, &report)?;
 
     // keep only the 10 most recent reports
-    let mut files: Vec<_> = std::fs::read_dir(reports_dir(&state))
+    let mut files: Vec<_> = std::fs::read_dir(reports_dir(state))
         .map(|rd| {
             rd.flatten()
                 .filter_map(|e| e.path().extension().map(|_| e.path()))
@@ -140,7 +150,7 @@ pub fn run_maintenance(state: State<'_, AppState>) -> Result<MaintenanceReport, 
     }
 
     // fun widgets — maintenance runs are real completion events too
-    let _ = crate::fun::note_completion(&state, "maintenance");
+    let _ = crate::fun::note_completion(state, "maintenance");
 
     Ok(report)
 }

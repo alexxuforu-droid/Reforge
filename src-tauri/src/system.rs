@@ -1,3 +1,4 @@
+use crate::error::AppError;
 use crate::state::AppState;
 use crate::{startup, undo};
 use serde::Serialize;
@@ -256,4 +257,54 @@ pub fn get_health_score(state: State<'_, AppState>) -> HealthScore {
             },
         ],
     }
+}
+
+/// P3-7 — local-first diagnostics bundle. One text file with build info +
+/// the startup-log tail, written to the user's Downloads folder so they can
+/// attach it to a bug report. Nothing is uploaded anywhere.
+#[tauri::command]
+pub fn bundle_diagnostics() -> Result<String, AppError> {
+    let bi = get_build_info();
+    let mut out = String::new();
+    out.push_str("=== Reforge diagnostics ===\n");
+    out.push_str(&format!(
+        "build_ts: {}\n",
+        bi.build_ts
+            .map(|t| t.to_string())
+            .unwrap_or_else(|| "unknown".into())
+    ));
+    out.push_str(&format!(
+        "git_hash: {}\n",
+        bi.git_hash.unwrap_or_else(|| "unknown".into())
+    ));
+    out.push_str(&format!(
+        "exe_path: {}\n",
+        bi.exe_path.unwrap_or_else(|| "unknown".into())
+    ));
+    out.push_str(&format!("os: {}\n", std::env::consts::OS));
+
+    let log = dirs::data_dir()
+        .unwrap_or_default()
+        .join("com.reforge.app")
+        .join("startup.log");
+    match std::fs::read_to_string(&log) {
+        Ok(content) => {
+            out.push_str("\n=== startup.log (tail 200) ===\n");
+            let lines: Vec<&str> = content.lines().collect();
+            for l in &lines[lines.len().saturating_sub(200)..] {
+                out.push_str(l);
+                out.push('\n');
+            }
+        }
+        Err(_) => out.push_str("\n(startup.log not found)\n"),
+    }
+
+    let downloads = dirs::download_dir().unwrap_or_else(std::env::temp_dir);
+    let path = downloads.join(format!(
+        "reforge-diagnostics-{}.txt",
+        crate::storage::now_millis()
+    ));
+    std::fs::write(&path, &out)
+        .map_err(|e| AppError::Command(format!("write diagnostics: {}", e)))?;
+    Ok(path.to_string_lossy().to_string())
 }

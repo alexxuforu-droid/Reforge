@@ -130,9 +130,10 @@ pub fn set_blue_light(
 // Schedule / automation config
 // ---------------------------------------------------------------------------
 
-/// One wall-clock style apply: at `time` ("HH:MM") the backend applies
-/// `payload` (the same StyleApply the studio sends) through the exact same
-/// `apply_style` path, so a scheduled apply is a normal revertible undo entry.
+/// One wall-clock look apply: at `time` ("HH:MM") the backend applies either
+/// a catalog style (`payload` — the same StyleApply the studio sends) or a
+/// pack (`bundle_id` — P5-7 scheduled look rotation) through the exact same
+/// apply path, so a scheduled apply is a normal revertible undo entry.
 #[derive(Serialize, Deserialize, Clone)]
 pub struct StyleScheduleEntry {
     pub id: String,
@@ -142,6 +143,11 @@ pub struct StyleScheduleEntry {
     pub style_id: String,
     pub name: String,
     pub payload: crate::styles::StyleApply,
+    /// P5-7 — when set, apply this installed pack instead of the style.
+    #[serde(default)]
+    pub bundle_id: Option<String>,
+    #[serde(default)]
+    pub bundle_name: Option<String>,
     /// YYYY-MM-DD of the last fire — the once-per-day guard.
     #[serde(default)]
     pub last_fired_day: String,
@@ -383,45 +389,53 @@ pub fn style_schedule_due(
 /// failure is surfaced as a `reforge-maintenance-failed` event, never
 /// swallowed.
 pub fn spawn_style_scheduler(state: AppState, handle: tauri::AppHandle) {
-    std::thread::spawn(move || {
-        loop {
-            std::thread::sleep(Duration::from_secs(20));
-            let mut cfg = load_config(&state);
-            if cfg.style_schedule.is_empty() {
-                continue;
+    std::thread::spawn(move || loop {
+        std::thread::sleep(Duration::from_secs(20));
+        let mut cfg = load_config(&state);
+        if cfg.style_schedule.is_empty() {
+            continue;
+        }
+        let now_min = crate::storage::local_minutes();
+        let today = crate::storage::local_date_key();
+        let due = style_schedule_due(&cfg.style_schedule, now_min, &today);
+        if due.is_empty() {
+            continue;
+        }
+        for entry in due {
+            if let Some(slot) = cfg.style_schedule.iter_mut().find(|e| e.id == entry.id) {
+                slot.last_fired_day = today.clone();
             }
-            let now_min = crate::storage::local_minutes();
-            let today = crate::storage::local_date_key();
-            let due = style_schedule_due(&cfg.style_schedule, now_min, &today);
-            if due.is_empty() {
-                continue;
-            }
-            for entry in due {
-                if let Some(slot) = cfg.style_schedule.iter_mut().find(|e| e.id == entry.id) {
-                    slot.last_fired_day = today.clone();
-                }
-                let _ = save_config(&state, &cfg);
-                let h = handle.clone();
-                let st = state.clone();
-                let fired = entry.clone();
-                tauri::async_runtime::spawn(async move {
-                    match crate::styles::apply_style_inner(h.clone(), st, fired.payload.clone()).await {
-                        Ok(res) => {
-                            tracing::info!("scheduled style applied: {}", res.name);
-                            let _ = h.emit(
-                                "reforge-maintenance-result",
-                                json!({ "message": format!("Scheduled style applied: {}", res.name) }),
-                            );
-                        }
-                        Err(e) => {
-                            let _ = h.emit(
-                                "reforge-maintenance-failed",
-                                json!({ "message": format!("Scheduled style \"{}\" failed: {}", fired.name, e) }),
-                            );
-                        }
+            let _ = save_config(&state, &cfg);
+            let h = handle.clone();
+            let st = state.clone();
+            let fired = entry.clone();
+            tauri::async_runtime::spawn(async move {
+                // P5-7 — a schedule entry can target an installed pack instead
+                // of a catalog style; both go through the revertible path.
+                let result = if let Some(bid) = fired.bundle_id.clone() {
+                    crate::marketplace::apply_bundle_inner(&h, &st, &bid)
+                        .map(|msg| (fired.name.clone(), msg))
+                } else {
+                    crate::styles::apply_style_inner(h.clone(), st, fired.payload.clone())
+                        .await
+                        .map(|res| (res.name, String::new()))
+                };
+                match result {
+                    Ok((name, _msg)) => {
+                        tracing::info!("scheduled look applied: {}", name);
+                        let _ = h.emit(
+                            "reforge-maintenance-result",
+                            json!({ "message": format!("Scheduled look applied: {}", name) }),
+                        );
                     }
-                });
-            }
+                    Err(e) => {
+                        let _ = h.emit(
+                            "reforge-maintenance-failed",
+                            json!({ "message": format!("Scheduled look \"{}\" failed: {}", fired.name, e) }),
+                        );
+                    }
+                }
+            });
         }
     });
 }
@@ -511,8 +525,14 @@ pub fn run_due_maintenance_inner(state: &AppState) -> Result<MaintenanceRun, App
     // in the undo log as a `storage_clean` entry (visible in History).
     let storage_cfg = crate::storage::load_storage_config(state);
     let (due, interval) = match storage_cfg.auto_clean.as_str() {
-        "weekly" => (maintenance_due(cfg.last_storage_clean, cfg.created_at, now, week), week),
-        "monthly" => (maintenance_due(cfg.last_storage_clean, cfg.created_at, now, month), month),
+        "weekly" => (
+            maintenance_due(cfg.last_storage_clean, cfg.created_at, now, week),
+            week,
+        ),
+        "monthly" => (
+            maintenance_due(cfg.last_storage_clean, cfg.created_at, now, month),
+            month,
+        ),
         _ => (false, 0),
     };
     if due && interval > 0 {
@@ -523,7 +543,11 @@ pub fn run_due_maintenance_inner(state: &AppState) -> Result<MaintenanceRun, App
         if !ids.is_empty() {
             match crate::cleanup::clean_now_inner(state, ids) {
                 Ok(res) => {
-                    let verb = if storage_cfg.dry_run { "would free" } else { "freed" };
+                    let verb = if storage_cfg.dry_run {
+                        "would free"
+                    } else {
+                        "freed"
+                    };
                     result.notes.push(format!(
                         "Scheduled safe clean {} {}{}",
                         verb,
@@ -537,7 +561,9 @@ pub fn run_due_maintenance_inner(state: &AppState) -> Result<MaintenanceRun, App
                         }
                     ));
                 }
-                Err(e) => result.notes.push(format!("Scheduled safe clean failed: {e}")),
+                Err(e) => result
+                    .notes
+                    .push(format!("Scheduled safe clean failed: {e}")),
             }
         }
         cfg.last_storage_clean = now;
@@ -553,15 +579,17 @@ pub fn run_due_maintenance_inner(state: &AppState) -> Result<MaintenanceRun, App
                 Ok(notes) => {
                     result.reapplied_theme = true;
                     if notes.is_empty() {
-                        result.notes.push(format!("Re-applied saved style: {}", rec.name));
+                        result
+                            .notes
+                            .push(format!("Re-applied saved style: {}", rec.name));
                     } else {
-                        result.notes.push(format!("Re-applied saved style: {}", rec.name));
+                        result
+                            .notes
+                            .push(format!("Re-applied saved style: {}", rec.name));
                         result.notes.extend(notes);
                     }
                 }
-                Err(e) => result
-                    .notes
-                    .push(format!("Style re-apply failed: {e}")),
+                Err(e) => result.notes.push(format!("Style re-apply failed: {e}")),
             }
         } else {
             let dir = state.data_dir.clone();
@@ -659,6 +687,8 @@ mod tests {
             time: time.into(),
             style_id: "s1".into(),
             name: id.into(),
+            bundle_id: None,
+            bundle_name: None,
             payload: StyleApply {
                 id: "s1".into(),
                 name: "Style".into(),
@@ -770,10 +800,7 @@ mod tests {
             blue_light_decision(true, "bogus", "07:00", 0.5, 12 * 60, 10),
             BlueLightDecision::Off
         );
-        assert_eq!(
-            blue_decision_off_on_bad_end(),
-            BlueLightDecision::Off
-        );
+        assert_eq!(blue_decision_off_on_bad_end(), BlueLightDecision::Off);
         // intensity is clamped into the safe gamma range
         assert_eq!(
             blue_light_decision(true, "19:00", "07:00", 2.0, 19 * 60 + 30, 10),
@@ -787,7 +814,11 @@ mod tests {
 
     #[test]
     fn scheduled_style_due_only_when_minute_matches_and_not_fired_today() {
-        let entries = vec![entry("a", "18:00", ""), entry("b", "18:00", "2026-08-15"), entry("c", "09:30", "")];
+        let entries = vec![
+            entry("a", "18:00", ""),
+            entry("b", "18:00", "2026-08-15"),
+            entry("c", "09:30", ""),
+        ];
         let due = style_schedule_due(&entries, 18 * 60, "2026-08-15");
         assert_eq!(due.len(), 1);
         assert_eq!(due[0].id, "a");
@@ -796,18 +827,40 @@ mod tests {
         assert_eq!(due2.len(), 1);
         assert_eq!(due2[0].id, "c");
         // a fired today → not due again today
-        assert!(style_schedule_due(&entries, 18 * 60, "2026-08-15").iter().all(|e| e.id != "b"));
+        assert!(style_schedule_due(&entries, 18 * 60, "2026-08-15")
+            .iter()
+            .all(|e| e.id != "b"));
     }
 
     #[test]
     fn maintenance_first_run_has_a_grace_period() {
         // fresh config (last=0): due only after created_at + 24h
         let created = 1_000_000;
-        assert!(!maintenance_due(0, created, created + 23 * 3600 * 1000, 7 * 86400 * 1000));
-        assert!(maintenance_due(0, created, created + 25 * 3600 * 1000, 7 * 86400 * 1000));
+        assert!(!maintenance_due(
+            0,
+            created,
+            created + 23 * 3600 * 1000,
+            7 * 86400 * 1000
+        ));
+        assert!(maintenance_due(
+            0,
+            created,
+            created + 25 * 3600 * 1000,
+            7 * 86400 * 1000
+        ));
         // normal cadence after the first run
         let last = created + 48 * 3600 * 1000;
-        assert!(!maintenance_due(last, created, last + 6 * 86400 * 1000, 7 * 86400 * 1000));
-        assert!(maintenance_due(last, created, last + 8 * 86400 * 1000, 7 * 86400 * 1000));
+        assert!(!maintenance_due(
+            last,
+            created,
+            last + 6 * 86400 * 1000,
+            7 * 86400 * 1000
+        ));
+        assert!(maintenance_due(
+            last,
+            created,
+            last + 8 * 86400 * 1000,
+            7 * 86400 * 1000
+        ));
     }
 }

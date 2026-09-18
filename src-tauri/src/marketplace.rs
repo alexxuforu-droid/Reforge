@@ -36,7 +36,17 @@ pub struct BundleManifest {
     pub thumbnail: String, // relative path inside assets/, or empty
     #[serde(default)]
     pub checksum: String, // sha256 over the bundle's files (manifest excluded)
+    // P5-1 — manifest v2: schema_version lets old readers accept v1 packs and
+    // new readers know what they're dealing with. 1 = pre-2026-08 manifests.
+    #[serde(default = "default_schema_version")]
+    pub schema_version: u32,
+    #[serde(default)]
+    pub changelog: Vec<String>,
     pub components: Vec<BundleComponent>,
+}
+
+fn default_schema_version() -> u32 {
+    1
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -48,6 +58,8 @@ pub enum BundleComponent {
     ThemeMode { mode: String },
     #[serde(rename = "wallpaper")]
     Wallpaper { asset: String },
+    #[serde(rename = "video")]
+    Video { asset: String },
     #[serde(rename = "taskbar")]
     Taskbar {
         size: Option<String>,
@@ -89,6 +101,8 @@ pub struct BundleInfo {
     pub description: String,
     pub component_count: usize,
     pub applied: bool,
+    /// P5-8 — how many times this pack has been applied (from the undo log).
+    pub applied_count: usize,
 }
 
 fn bundles_dir(state: &AppState) -> PathBuf {
@@ -110,6 +124,8 @@ fn empty_manifest(name: String) -> BundleManifest {
         tags: Vec::new(),
         thumbnail: String::new(),
         checksum: String::new(),
+        schema_version: 1,
+        changelog: Vec::new(),
         components: Vec::new(),
     }
 }
@@ -117,16 +133,17 @@ fn empty_manifest(name: String) -> BundleManifest {
 fn list_bundles(state: &AppState) -> Vec<BundleInfo> {
     let dir = bundles_dir(state);
     // a pack counts as "applied" if the undo log has a marketplace_apply for it
-    let applied_ids: std::collections::HashSet<String> = crate::undo::load_undo_entries(state)
-        .into_iter()
-        .filter(|e| e.kind == "marketplace_apply")
-        .filter_map(|e| {
-            e.data
-                .get("bundle_id")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-        })
-        .collect();
+    // P5-8 — applied counts come from the undo log too (kind == marketplace_apply).
+    let mut applied_counts: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
+    for e in crate::undo::load_undo_entries(state) {
+        if e.kind != "marketplace_apply" {
+            continue;
+        }
+        if let Some(id) = e.data.get("bundle_id").and_then(|v| v.as_str()) {
+            *applied_counts.entry(id.to_string()).or_insert(0) += 1;
+        }
+    }
     let mut out = Vec::new();
     if let Ok(rd) = std::fs::read_dir(&dir) {
         for e in rd.flatten() {
@@ -146,6 +163,7 @@ fn list_bundles(state: &AppState) -> Vec<BundleInfo> {
             if m.id.is_empty() {
                 continue;
             }
+            let count = applied_counts.get(&m.id).copied().unwrap_or(0);
             out.push(BundleInfo {
                 id: m.id.clone(),
                 name: m.name,
@@ -153,7 +171,8 @@ fn list_bundles(state: &AppState) -> Vec<BundleInfo> {
                 author: m.author,
                 description: m.description,
                 component_count: m.components.len(),
-                applied: applied_ids.contains(&m.id),
+                applied: count > 0,
+                applied_count: count,
             });
         }
     }
@@ -221,6 +240,70 @@ fn capture_look(state: &AppState) -> BundleManifest {
         mode: ls.mode,
         asset,
     });
+    // animated scene currently running (if any)
+    let eng = crate::wallpaper_engine::load_engine(state);
+    if let Some(scene) = &eng.scene {
+        components.push(BundleComponent::Scene {
+            id: scene.id.clone(),
+            kind: scene.kind.clone(),
+            speed: scene.speed,
+            density: scene.density,
+            colors: scene.colors.clone(),
+        });
+    }
+    // video wallpaper — copy the media file into assets
+    if let Some(media) = &eng.media {
+        let ext = std::path::Path::new(&media.path)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("mp4")
+            .to_lowercase();
+        let asset_name = format!("video_{}.{}", now_millis(), ext);
+        let dst = bundle_dir(state, &id).join("assets").join(&asset_name);
+        if let Some(parent) = dst.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let _ = std::fs::copy(&media.path, &dst);
+        components.push(BundleComponent::Video { asset: asset_name });
+    }
+    // custom sound scheme + per-event sounds the user changed
+    let scheme = crate::sounds::get_current_scheme();
+    if !scheme.guid.is_empty() && !scheme.builtin {
+        components.push(BundleComponent::SoundScheme { guid: scheme.guid });
+        for ev in crate::sounds::list_sound_events() {
+            if ev.has_sound && !ev.current.is_empty() && ev.current != ev.default {
+                let ext = std::path::Path::new(&ev.current)
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("wav")
+                    .to_lowercase();
+                let asset_name = format!(
+                    "sound_{}_{}.{}",
+                    now_millis(),
+                    ev.event.replace('.', "_"),
+                    ext
+                );
+                let dst = bundle_dir(state, &id).join("assets").join(&asset_name);
+                if let Some(parent) = dst.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                let _ = std::fs::copy(&ev.current, &dst);
+                components.push(BundleComponent::SoundEvent {
+                    event: ev.event.clone(),
+                    asset: asset_name,
+                });
+            }
+        }
+    }
+    // font substitutions (only non-trivial ones)
+    for sub in crate::fonts::list_font_substitutions() {
+        if !sub.substituted.is_empty() && !sub.original.eq_ignore_ascii_case(&sub.substituted) {
+            components.push(BundleComponent::FontSub {
+                original: sub.original.clone(),
+                substitute: sub.substituted.clone(),
+            });
+        }
+    }
 
     BundleManifest {
         id,
@@ -232,6 +315,8 @@ fn capture_look(state: &AppState) -> BundleManifest {
         tags: vec!["captured".into()],
         thumbnail: String::new(),
         checksum: String::new(),
+        schema_version: 2,
+        changelog: vec!["Captured from the current desktop look.".into()],
         components,
     }
 }
@@ -331,24 +416,28 @@ fn sha256_hex(data: &[u8]) -> String {
 
 /// Deterministic checksum over every file in a bundle except manifest.json
 /// (the manifest carries the checksum itself, so it can't be part of it).
+/// Walks subdirectories — pack media lives in assets/, so a top-level-only
+/// scan would miss tampering entirely (P3-1 caught exactly that).
 fn bundle_checksum(dir: &std::path::Path) -> String {
     let mut entries: Vec<(String, String)> = Vec::new();
-    if let Ok(rd) = std::fs::read_dir(dir) {
-        for e in rd.flatten() {
-            let p = e.path();
-            if !p.is_file() {
-                continue;
-            }
-            if p.file_name().map(|n| n == "manifest.json").unwrap_or(false) {
-                continue;
-            }
-            if let Ok(data) = std::fs::read(&p) {
-                let rel = p
-                    .strip_prefix(dir)
-                    .map(|r| r.to_string_lossy().to_string())
-                    .unwrap_or_default();
-                entries.push((rel, sha256_hex(&data)));
-            }
+    for item in walkdir::WalkDir::new(dir).max_depth(12) {
+        let entry = match item {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let p = entry.path();
+        if p.file_name().map(|n| n == "manifest.json").unwrap_or(false) {
+            continue;
+        }
+        if let Ok(data) = std::fs::read(p) {
+            let rel = p
+                .strip_prefix(dir)
+                .map(|r| r.to_string_lossy().to_string())
+                .unwrap_or_default();
+            entries.push((rel, sha256_hex(&data)));
         }
     }
     entries.sort();
@@ -382,9 +471,9 @@ pub fn marketplace_import(
     let assets = src.join("assets");
     for comp in &m.components {
         let asset = match comp {
-            BundleComponent::Wallpaper { asset } | BundleComponent::SoundEvent { asset, .. } => {
-                Some(asset)
-            }
+            BundleComponent::Wallpaper { asset }
+            | BundleComponent::Video { asset }
+            | BundleComponent::SoundEvent { asset, .. } => Some(asset),
             BundleComponent::LockScreen { asset: Some(a), .. } => Some(a),
             _ => None,
         };
@@ -433,6 +522,7 @@ pub fn marketplace_import(
         description: m.description,
         component_count: m.components.len(),
         applied: false,
+        applied_count: 0,
     })
 }
 
@@ -463,6 +553,7 @@ pub fn marketplace_export_look(
         description: m.description,
         component_count: m.components.len(),
         applied: false,
+        applied_count: 0,
     })
 }
 
@@ -493,7 +584,17 @@ pub fn marketplace_apply_bundle(
     state: State<'_, AppState>,
     bundle_id: String,
 ) -> Result<String, AppError> {
-    let manifest_path = bundle_dir(&state, &bundle_id).join("manifest.json");
+    apply_bundle_inner(&app, &state, &bundle_id)
+}
+
+/// The apply logic without the Tauri state wrapper — the style scheduler
+/// (P5-7 scheduled pack rotation) calls this directly.
+pub fn apply_bundle_inner(
+    app: &tauri::AppHandle,
+    state: &AppState,
+    bundle_id: &str,
+) -> Result<String, AppError> {
+    let manifest_path = bundle_dir(state, bundle_id).join("manifest.json");
     let m: BundleManifest = load_json(&manifest_path, empty_manifest(String::new()));
     if m.id.is_empty() {
         return Err(AppError::Command(
@@ -513,7 +614,7 @@ pub fn marketplace_apply_bundle(
         .map(|s| s.guid)
         .unwrap_or_default();
 
-    let assets = bundle_dir(&state, &bundle_id).join("assets");
+    let assets = bundle_dir(state, bundle_id).join("assets");
 
     // apply each component
     for comp in &m.components {
@@ -528,6 +629,34 @@ pub fn marketplace_apply_bundle(
                 let path = assets.join(asset);
                 if path.exists() {
                     let _ = crate::wallpaper::apply_wallpaper_raw(&path.to_string_lossy());
+                }
+            }
+            BundleComponent::Video { asset } => {
+                let src = assets.join(asset);
+                if src.exists() {
+                    let ext = asset.rsplit('.').next().unwrap_or("mp4").to_lowercase();
+                    let kind = if ext == "gif" { "gif" } else { "video" };
+                    let dst = state.wallpapers_dir().join(asset);
+                    let _ = std::fs::copy(&src, &dst);
+                    let (w, h) = crate::transcode::probe_dimensions(&dst).unwrap_or((1920, 1080));
+                    let video = crate::wallpaper_engine::VideoWallpaper {
+                        path: dst.to_string_lossy().to_string(),
+                        kind: kind.into(),
+                        width: w,
+                        height: h,
+                        name: asset
+                            .strip_suffix(&format!(".{}", ext))
+                            .unwrap_or(asset)
+                            .to_string(),
+                        monitor: None,
+                    };
+                    let _ = crate::wallpaper_video::start_video(app, &video);
+                    let mut eng = crate::wallpaper_engine::load_engine(state);
+                    eng.active = true;
+                    eng.frozen = false;
+                    eng.scene = None;
+                    eng.media = Some(video);
+                    let _ = crate::wallpaper_engine::save_engine(state, &eng);
                 }
             }
             BundleComponent::Taskbar {
@@ -583,7 +712,7 @@ pub fn marketplace_apply_bundle(
                     density: *density,
                     colors: colors.clone(),
                 };
-                let _ = crate::wallpaper_engine::start_scene(&app, &scene);
+                let _ = crate::wallpaper_engine::start_scene(app, &scene);
             }
             BundleComponent::FontSub {
                 original,
@@ -607,7 +736,7 @@ pub fn marketplace_apply_bundle(
                                 }
                                 let _ = std::fs::copy(&path, &dst);
                                 let _ = crate::lockscreen::set_lock_screen_image_pub(
-                                    &state,
+                                    state,
                                     &dst.to_string_lossy(),
                                 );
                             }
@@ -617,7 +746,7 @@ pub fn marketplace_apply_bundle(
                         // can't meaningfully capture a slideshow from bundle — skip
                     }
                     _ => {
-                        let _ = crate::lockscreen::set_lock_screen_spotlight_pub(&state);
+                        let _ = crate::lockscreen::set_lock_screen_spotlight_pub(state);
                     }
                 }
             }
@@ -626,7 +755,7 @@ pub fn marketplace_apply_bundle(
 
     // log composite undo
     undo::log_entry(
-        &state,
+        state,
         "marketplace_apply",
         format!("Applied pack: {}", m.name),
         json!({
@@ -676,6 +805,73 @@ pub fn marketplace_delete_bundle(
     Ok(())
 }
 
+/// P5-2 — pack preview: read one asset (e.g. the wallpaper) out of an
+/// installed bundle as a data URL so the preview modal can render it (the
+/// webview CSP blocks file:// images). Asset names are validated like imports.
+#[tauri::command]
+pub fn marketplace_preview_asset(
+    state: State<'_, AppState>,
+    bundle_id: String,
+    asset: String,
+) -> Result<String, AppError> {
+    if !asset_name_ok(&asset) {
+        return Err(AppError::Invalid("Unsafe asset path.".into()));
+    }
+    let path = bundle_dir(&state, &bundle_id).join("assets").join(&asset);
+    crate::lockscreen::image_data_url(&path)
+}
+
+/// P5-3 — build a pack from declarative components (share codes). Packs made
+/// this way carry no media files — only the look's settings. Security is
+/// trivial: components are plain data, no files enter the bundle.
+#[tauri::command]
+pub fn marketplace_import_components(
+    state: State<'_, AppState>,
+    name: String,
+    components: Vec<BundleComponent>,
+) -> Result<BundleInfo, AppError> {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err(AppError::Invalid("Give the pack a name.".into()));
+    }
+    if components.is_empty() {
+        return Err(AppError::Invalid(
+            "Nothing to import — the code decoded to zero components.".into(),
+        ));
+    }
+    let id = Uuid::new_v4().to_string();
+    let dir = bundle_dir(&state, &id);
+    std::fs::create_dir_all(dir.join("assets")).map_err(|e| AppError::Command(e.to_string()))?;
+    let mut m = BundleManifest {
+        id: id.clone(),
+        name: name.clone(),
+        version: "1.0".into(),
+        author: "Shared code".into(),
+        description: "Imported from a share code — the declarative look, no media files.".into(),
+        license: String::new(),
+        tags: vec!["shared".into(), "code".into()],
+        thumbnail: String::new(),
+        checksum: String::new(),
+        schema_version: 2,
+        changelog: Vec::new(),
+        components,
+    };
+    let manifest_path = dir.join("manifest.json");
+    save_json(&manifest_path, &m)?;
+    m.checksum = bundle_checksum(&dir);
+    save_json(&manifest_path, &m)?;
+    Ok(BundleInfo {
+        id,
+        name,
+        version: m.version,
+        author: m.author,
+        description: m.description,
+        component_count: m.components.len(),
+        applied: false,
+        applied_count: 0,
+    })
+}
+
 // helper: recursive directory copy
 fn copy_dir_all(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
     std::fs::create_dir_all(dst)?;
@@ -691,4 +887,126 @@ fn copy_dir_all(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Hand-rolled temp dir (same pattern as wallpaper.rs / undo.rs) — packs
+    /// are data-only, so these need no Windows APIs and run anywhere.
+    struct TestDir(PathBuf);
+
+    impl TestDir {
+        fn new() -> Self {
+            use std::sync::atomic::{AtomicU64, Ordering};
+            static SEQ: AtomicU64 = AtomicU64::new(0);
+            let path = std::env::temp_dir().join(format!(
+                "reforge-pack-test-{}-{}-{}",
+                std::process::id(),
+                SEQ.fetch_add(1, Ordering::Relaxed),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_nanos())
+                    .unwrap_or(0)
+            ));
+            std::fs::create_dir_all(&path).unwrap();
+            TestDir(path)
+        }
+
+        fn file(&self, rel: &str, contents: &[u8]) -> &Self {
+            let p = self.0.join(rel);
+            if let Some(parent) = p.parent() {
+                std::fs::create_dir_all(parent).unwrap();
+            }
+            std::fs::write(&p, contents).unwrap();
+            self
+        }
+    }
+
+    impl Drop for TestDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn rejects_forbidden_extension() {
+        let t = TestDir::new();
+        t.file("manifest.json", b"{}")
+            .file("assets/evil.exe", b"not really an exe");
+        let err = validate_pack_security(&t.0).unwrap_err();
+        assert!(err.to_string().contains("forbidden"), "got: {}", err);
+    }
+
+    #[test]
+    fn rejects_executable_content_even_with_innocent_name() {
+        // PE header sniffs as executable regardless of the .png extension.
+        let t = TestDir::new();
+        t.file("manifest.json", b"{}")
+            .file("assets/data.png", b"MZ\x90\x00fake-headers");
+        let err = validate_pack_security(&t.0).unwrap_err();
+        assert!(
+            err.to_string().contains("executable content"),
+            "got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn rejects_shebang_scripts() {
+        let t = TestDir::new();
+        t.file("manifest.json", b"{}")
+            .file("assets/notes.txt", b"#!/bin/sh\necho hi");
+        let err = validate_pack_security(&t.0).unwrap_err();
+        assert!(
+            err.to_string().contains("executable content"),
+            "got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn accepts_clean_data_pack() {
+        let t = TestDir::new();
+        t.file("manifest.json", b"{}")
+            .file("assets/wall.png", b"PNG bytes")
+            .file("assets/loop.mp4", b"video bytes")
+            .file("assets/ding.wav", b"wave bytes");
+        assert!(validate_pack_security(&t.0).is_ok());
+    }
+
+    #[test]
+    fn rejects_empty_pack() {
+        let t = TestDir::new();
+        let err = validate_pack_security(&t.0).unwrap_err();
+        assert!(err.to_string().contains("empty"), "got: {}", err);
+    }
+
+    #[test]
+    fn unsafe_asset_names_rejected() {
+        assert!(!asset_name_ok("../escape.png"));
+        assert!(!asset_name_ok("a/b.png"));
+        assert!(!asset_name_ok("a\\b.png"));
+        assert!(!asset_name_ok(".hidden"));
+        assert!(!asset_name_ok(""));
+        assert!(!asset_name_ok(".."));
+        assert!(asset_name_ok("wall.png"));
+        assert!(asset_name_ok("video_123.mp4"));
+        assert!(asset_name_ok("sound_SystemStart.wav"));
+    }
+
+    #[test]
+    fn checksum_is_deterministic_and_catches_tampering() {
+        let t = TestDir::new();
+        t.file("manifest.json", b"{}")
+            .file("assets/wall.png", b"PNG bytes");
+        let a = bundle_checksum(&t.0);
+        let b = bundle_checksum(&t.0);
+        assert_eq!(a, b, "checksum must be deterministic");
+        // tamper with a payload file → checksum must change
+        std::fs::write(t.0.join("assets/wall.png"), b"PNG tampered").unwrap();
+        let c = bundle_checksum(&t.0);
+        assert_ne!(a, c, "tampering must change the checksum");
+    }
 }
