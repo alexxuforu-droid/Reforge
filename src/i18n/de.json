@@ -84,5 +84,30 @@
   "settings.updates.checkFailed": "Update-Prüfung fehlgeschlagen – {message}",
 
   "common.dismiss": "Verwerfen",
-  "common.close": "Schließen"
+  "common.close": "Schließen",
+
+  "a11y.title": "Bedienungshilfen",
+  "a11y.subtitle": "Integrierte Windows-Erleichterungen – alles über den Verlauf reversibel",
+  "a11y.vision": "Sehen",
+  "a11y.vision.subtitle": "Starker Kontrast & Farbfilter",
+  "a11y.highContrast": "Starker Kontrast",
+  "a11y.highContrast.desc": "Kontrastreiches Theme für Lesbarkeit",
+  "a11y.colorFilter": "Farbfilter",
+  "a11y.colorFilter.desc": "Gilt live für ganz Windows",
+  "a11y.filter.grayscale": "Graustufen",
+  "a11y.filter.invert": "Invertieren",
+  "a11y.filter.grayscaleInverted": "Graustufen invertiert",
+  "a11y.filter.deuteranopia": "Deuteranopie",
+  "a11y.filter.protanopia": "Protanopie",
+  "a11y.filter.tritanopia": "Tritanopie",
+  "a11y.motion": "Bewegung",
+  "a11y.motion.subtitle": "Visuelle Effekte reduzieren",
+  "a11y.animationsOff": "Animationen aus",
+  "a11y.animationsOff.desc": "Deaktiviert Fenster- & UI-Animationen",
+  "a11y.cursorSize": "Zeigergröße",
+  "a11y.cursorSize.subtitle": "Größerer Zeiger zum leichteren Verfolgen",
+  "a11y.textScale": "Textgröße",
+  "a11y.textScale.subtitle": "Größerer Text überall",
+  "a11y.signOutNote": "Gilt nach Ab- und erneutem Anmelden.",
+  "a11y.saved": "Bedienungshilfen gespeichert – jederzeit über den Verlauf rückgängig"
 }

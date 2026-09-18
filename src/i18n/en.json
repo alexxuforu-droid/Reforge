@@ -84,5 +84,30 @@
   "settings.updates.checkFailed": "Couldn't check for updates — {message}",
 
   "common.dismiss": "Dismiss",
-  "common.close": "Close"
+  "common.close": "Close",
+
+  "a11y.title": "Accessibility",
+  "a11y.subtitle": "Windows built-in ease-of-access toggles — every change reversible from History",
+  "a11y.vision": "Vision",
+  "a11y.vision.subtitle": "High contrast & color filters",
+  "a11y.highContrast": "High contrast",
+  "a11y.highContrast.desc": "Strong contrast theme for readability",
+  "a11y.colorFilter": "Color filter",
+  "a11y.colorFilter.desc": "Applies live across Windows",
+  "a11y.filter.grayscale": "Grayscale",
+  "a11y.filter.invert": "Invert",
+  "a11y.filter.grayscaleInverted": "Grayscale inverted",
+  "a11y.filter.deuteranopia": "Deuteranopia",
+  "a11y.filter.protanopia": "Protanopia",
+  "a11y.filter.tritanopia": "Tritanopia",
+  "a11y.motion": "Motion",
+  "a11y.motion.subtitle": "Reduce visual effects",
+  "a11y.animationsOff": "Animations off",
+  "a11y.animationsOff.desc": "Disables window/UI animations",
+  "a11y.cursorSize": "Cursor size",
+  "a11y.cursorSize.subtitle": "Larger pointer for easier tracking",
+  "a11y.textScale": "Text scale",
+  "a11y.textScale.subtitle": "Bigger text everywhere",
+  "a11y.signOutNote": "Applies after you sign out and back in.",
+  "a11y.saved": "Accessibility settings saved — revert anytime from History"
 }

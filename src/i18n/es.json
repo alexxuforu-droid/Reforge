@@ -84,5 +84,30 @@
   "settings.updates.checkFailed": "No se pudo buscar actualizaciones — {message}",
 
   "common.dismiss": "Descartar",
-  "common.close": "Cerrar"
+  "common.close": "Cerrar",
+
+  "a11y.title": "Accesibilidad",
+  "a11y.subtitle": "Controles de accesibilidad integrados de Windows — todo reversible desde el Historial",
+  "a11y.vision": "Visión",
+  "a11y.vision.subtitle": "Alto contraste y filtros de color",
+  "a11y.highContrast": "Alto contraste",
+  "a11y.highContrast.desc": "Tema de contraste fuerte para legibilidad",
+  "a11y.colorFilter": "Filtro de color",
+  "a11y.colorFilter.desc": "Se aplica en vivo en todo Windows",
+  "a11y.filter.grayscale": "Escala de grises",
+  "a11y.filter.invert": "Invertir",
+  "a11y.filter.grayscaleInverted": "Grises invertidos",
+  "a11y.filter.deuteranopia": "Deuteranopía",
+  "a11y.filter.protanopia": "Protanopía",
+  "a11y.filter.tritanopia": "Tritanopía",
+  "a11y.motion": "Movimiento",
+  "a11y.motion.subtitle": "Reducir efectos visuales",
+  "a11y.animationsOff": "Sin animaciones",
+  "a11y.animationsOff.desc": "Desactiva las animaciones de ventanas e interfaz",
+  "a11y.cursorSize": "Tamaño del cursor",
+  "a11y.cursorSize.subtitle": "Puntero más grande para seguirlo mejor",
+  "a11y.textScale": "Escala de texto",
+  "a11y.textScale.subtitle": "Texto más grande en todas partes",
+  "a11y.signOutNote": "Se aplica al cerrar sesión y volver a entrar.",
+  "a11y.saved": "Ajustes de accesibilidad guardados — revierte cuando quieras desde el Historial"
 }

@@ -4,22 +4,24 @@
 import { useState } from "react";
 import { errorCopy, call } from "../lib/api";
 import { useLoad } from "../lib/useLoad";
+import { useI18n } from "../i18n";
 import type { AccessibilityState, ColorFilterState } from "../lib/types";
 import { InlineAlert, Section, Toggle, toast } from "../components/ui";
 import { IconEye, IconKeyboard, IconMonitor, IconType, IconPalette } from "../components/icons";
 
 const CURSOR_SIZES = [32, 48, 64];
 const TEXT_SCALES = [100, 125, 150, 175, 200];
-const FILTERS: { type: number; label: string }[] = [
-  { type: 0, label: "Grayscale" },
-  { type: 1, label: "Invert" },
-  { type: 2, label: "Grayscale inverted" },
-  { type: 3, label: "Deuteranopia" },
-  { type: 4, label: "Protanopia" },
-  { type: 5, label: "Tritanopia" },
+const FILTERS: { type: number; key: string }[] = [
+  { type: 0, key: "a11y.filter.grayscale" },
+  { type: 1, key: "a11y.filter.invert" },
+  { type: 2, key: "a11y.filter.grayscaleInverted" },
+  { type: 3, key: "a11y.filter.deuteranopia" },
+  { type: 4, key: "a11y.filter.protanopia" },
+  { type: 5, key: "a11y.filter.tritanopia" },
 ];
 
 export default function Accessibility() {
+  const { t } = useI18n();
   const { data, error, refresh } = useLoad<AccessibilityState>("get_accessibility_state");
   const [busy, setBusy] = useState(false);
 
@@ -27,7 +29,7 @@ export default function Accessibility() {
     if (busy) return;
     setBusy(true);
     call("set_accessibility_state", partial)
-      .then(() => { toast("Accessibility settings saved — revert anytime from History"); refresh(); })
+      .then(() => { toast(t("a11y.saved")); refresh(); })
       .catch((e) => toast(errorCopy(e), "err"))
       .finally(() => setBusy(false));
   };
@@ -43,34 +45,34 @@ export default function Accessibility() {
   return (
     <div className="space-y-4">
       <div className="page-head">
-        <h1 className="page-title">Accessibility</h1>
-        <p className="page-subtitle">Windows built-in ease-of-access toggles — every change reversible from History</p>
+        <h1 className="page-title">{t("a11y.title")}</h1>
+        <p className="page-subtitle">{t("a11y.subtitle")}</p>
       </div>
 
       {error && <InlineAlert>{error}</InlineAlert>}
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Section title="Vision" subtitle="High contrast & color filters">
+        <Section title={t("a11y.vision")} subtitle={t("a11y.vision.subtitle")}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <IconEye size={15} className="text-[var(--text-tertiary)]" />
               <div>
-                <div className="text-sm font-medium text-[var(--text-primary)]">High contrast</div>
-                <div className="text-2xs text-[var(--text-tertiary)]">Strong contrast theme for readability</div>
+                <div className="text-sm font-medium text-[var(--text-primary)]">{t("a11y.highContrast")}</div>
+                <div className="text-2xs text-[var(--text-tertiary)]">{t("a11y.highContrast.desc")}</div>
               </div>
             </div>
-            <Toggle on={a.high_contrast} disabled={busy} onChange={(v) => patch({ high_contrast: v })} />
+            <Toggle on={a.high_contrast} disabled={busy} onChange={(v) => patch({ high_contrast: v })} label={t("a11y.highContrast")} />
           </div>
 
           <div className="mt-4 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <IconPalette size={15} className="text-[var(--text-tertiary)]" />
               <div>
-                <div className="text-sm font-medium text-[var(--text-primary)]">Color filter</div>
-                <div className="text-2xs text-[var(--text-tertiary)]">Applies live across Windows</div>
+                <div className="text-sm font-medium text-[var(--text-primary)]">{t("a11y.colorFilter")}</div>
+                <div className="text-2xs text-[var(--text-tertiary)]">{t("a11y.colorFilter.desc")}</div>
               </div>
             </div>
-            <Toggle on={a.color_filter.active} disabled={busy} onChange={(v) => patch({ color_filter: { ...a.color_filter, active: v } })} />
+            <Toggle on={a.color_filter.active} disabled={busy} onChange={(v) => patch({ color_filter: { ...a.color_filter, active: v } })} label={t("a11y.colorFilter")} />
           </div>
           {a.color_filter.active && (
             <div className="mt-3 flex flex-wrap gap-1.5">
@@ -81,27 +83,27 @@ export default function Accessibility() {
                   disabled={busy}
                   className={`rounded-full px-3 py-1 text-xs transition-colors ${a.color_filter.filter_type === f.type ? "bg-[var(--accent-hex)] text-white" : "bg-[var(--surface-overlay)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"}`}
                 >
-                  {f.label}
+                  {t(f.key)}
                 </button>
               ))}
             </div>
           )}
         </Section>
 
-        <Section title="Motion" subtitle="Reduce visual effects">
+        <Section title={t("a11y.motion")} subtitle={t("a11y.motion.subtitle")}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <IconMonitor size={15} className="text-[var(--text-tertiary)]" />
               <div>
-                <div className="text-sm font-medium text-[var(--text-primary)]">Animations off</div>
-                <div className="text-2xs text-[var(--text-tertiary)]">Disables window/UI animations</div>
+                <div className="text-sm font-medium text-[var(--text-primary)]">{t("a11y.animationsOff")}</div>
+                <div className="text-2xs text-[var(--text-tertiary)]">{t("a11y.animationsOff.desc")}</div>
               </div>
             </div>
-            <Toggle on={a.animations_off} disabled={busy} onChange={(v) => patch({ animations_off: v })} />
+            <Toggle on={a.animations_off} disabled={busy} onChange={(v) => patch({ animations_off: v })} label={t("a11y.animationsOff")} />
           </div>
         </Section>
 
-        <Section title="Cursor size" subtitle="Larger pointer for easier tracking">
+        <Section title={t("a11y.cursorSize")} subtitle={t("a11y.cursorSize.subtitle")}>
           <div className="flex items-center gap-2">
             <IconKeyboard size={15} className="text-[var(--text-tertiary)]" />
             <div className="flex gap-1.5">
@@ -119,7 +121,7 @@ export default function Accessibility() {
           </div>
         </Section>
 
-        <Section title="Text scale" subtitle="Bigger text everywhere">
+        <Section title={t("a11y.textScale")} subtitle={t("a11y.textScale.subtitle")}>
           <div className="flex items-center gap-2">
             <IconType size={15} className="text-[var(--text-tertiary)]" />
             <div className="flex flex-wrap gap-1.5">
@@ -135,7 +137,7 @@ export default function Accessibility() {
               ))}
             </div>
           </div>
-          <div className="mt-2 text-2xs text-[var(--text-tertiary)]">Applies after you sign out and back in.</div>
+          <div className="mt-2 text-2xs text-[var(--text-tertiary)]">{t("a11y.signOutNote")}</div>
         </Section>
       </div>
     </div>
