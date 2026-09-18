@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { errorCopy, call, fmt, fmtAge } from "../lib/api";
+import { errorCopy, call, callWithTimeout, fmt, fmtAge } from "../lib/api";
 import { useLoad } from "../lib/useLoad";
 import type { MaintenanceReport, Snapshot, UndoEntry } from "../lib/types";
 import { InlineAlert, KindChip, Modal, Section, Select, Toggle, toast } from "../components/ui";
@@ -67,7 +67,7 @@ export default function History() {
   const runMaintenance = async () => {
     setRunningMaint(true);
     try {
-      const r = await call<MaintenanceReport>("run_maintenance");
+      const r = await callWithTimeout<MaintenanceReport>("run_maintenance", undefined, 180_000);
       refreshReports();
       toast(`Maintenance complete — ${fmt(r.junk_bytes)} junk · ${fmt(r.duplicate_bytes)} duplicates`);
     } catch (e) {
@@ -347,14 +347,15 @@ export default function History() {
                     {entries.length} change{entries.length === 1 ? "" : "s"}
                   </span>
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-2" role="list">
                   {entries.map((e) => {
                     const checkable = e.revertible && !e.undone;
                     const checked = selected.has(e.id);
                     return (
                       <div
                         key={e.id}
-                        className={`flex items-center gap-3 rounded-xl border px-4 py-3 transition-colors ${
+                        role="listitem"
+                        className={`animate-fade-in flex items-center gap-3 rounded-xl border px-4 py-3 transition-colors ${
                           selectMode && checked
                             ? "border-[var(--border-accent)] bg-[var(--surface-selected)]"
                             : e.undone
