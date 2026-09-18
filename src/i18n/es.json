@@ -114,6 +114,10 @@
   "analytics.title": "Tendencias de actividad",
   "analytics.subtitle": "Cambios por día en las últimas 2 semanas — contados desde tu Historial local, nada se sube",
   "analytics.empty": "Sin actividad aún — haz un cambio y su día se iluminará aquí.",
+  "analytics.daily": "Diario · últimos 14 días",
+  "analytics.monthly": "Mensual · últimos 6 meses",
+  "analytics.away": "Último cambio: {desc} ({age}).",
+  "organize.smartFolder.hitCount": "{count} archivo{plural}",
 
   "settings.advanced": "Avanzado",
   "settings.advanced.subtitle": "Cada archivo de configuración de Reforge — respáldalos o edítalos a mano (la app los relee al abrir)",

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { call, fmt, fmtAge } from "../lib/api";
-import { bucketByDay } from "../lib/trends";
+import { bucketByDay, bucketByMonth } from "../lib/trends";
 import { useLoad } from "../lib/useLoad";
 import { useI18n } from "../i18n";
 import type { DashboardMetrics, HealthScore, SystemInfo, UndoEntry } from "../lib/types";
@@ -43,6 +43,9 @@ export default function Dashboard({ onNavigate = () => {} }: { onNavigate?: (v: 
   // X-6 — activity trends from the local undo log (no new collection).
   const trendBuckets = useMemo(() => bucketByDay(recent ?? [], 14), [recent]);
   const trendPeak = Math.max(1, ...trendBuckets.map((b) => b.count));
+  const monthBuckets = useMemo(() => bucketByMonth(recent ?? [], 6), [recent]);
+  const monthPeak = Math.max(1, ...monthBuckets.map((b) => b.count));
+  const latestChange = (recent ?? [])[0] ?? null;
 
   const disk = sys?.disks.length ? [...sys.disks].sort((a, b) => a.free_pct - b.free_pct)[0] : null;
   const ramPct = sys ? ((sys.ram_total - sys.ram_used) / sys.ram_total) * 100 : 0;
@@ -250,16 +253,40 @@ export default function Dashboard({ onNavigate = () => {} }: { onNavigate?: (v: 
             {t("analytics.empty")}
           </div>
         ) : (
-          <div className="flex h-24 items-end gap-1" role="img" aria-label={`Changes per day for 14 days, busiest day ${trendPeak} changes`}>
-            {trendBuckets.map((b) => (
-              <div
-                key={b.label}
-                title={`${b.label}: ${b.count} change${b.count === 1 ? "" : "s"}`}
-                aria-hidden="true"
-                className="min-w-0 flex-1 rounded-t bg-[var(--accent-hex)] opacity-80"
-                style={{ height: `${Math.max(4, Math.round((b.count / trendPeak) * 100))}%`, opacity: b.count === 0 ? 0.15 : 0.8 }}
-              />
-            ))}
+          <div className="space-y-4">
+            {latestChange && (
+              <p aria-live="polite" className="text-xs text-[var(--text-secondary)]">
+                {t("analytics.away", { desc: latestChange.description, age: fmtAge(latestChange.ts) })}
+              </p>
+            )}
+            <div>
+              <div className="mb-1 text-2xs font-medium uppercase tracking-wider text-[var(--text-tertiary)]">{t("analytics.daily")}</div>
+              <div className="flex h-24 items-end gap-1" role="img" aria-label={`Changes per day for 14 days, busiest day ${trendPeak} changes`}>
+                {trendBuckets.map((b) => (
+                  <div
+                    key={b.label}
+                    title={`${b.label}: ${b.count} change${b.count === 1 ? "" : "s"}`}
+                    aria-hidden="true"
+                    className="min-w-0 flex-1 rounded-t bg-[var(--accent-hex)] opacity-80"
+                    style={{ height: `${Math.max(4, Math.round((b.count / trendPeak) * 100))}%`, opacity: b.count === 0 ? 0.15 : 0.8 }}
+                  />
+                ))}
+              </div>
+            </div>
+            <div>
+              <div className="mb-1 text-2xs font-medium uppercase tracking-wider text-[var(--text-tertiary)]">{t("analytics.monthly")}</div>
+              <div className="flex h-16 items-end gap-1.5" role="img" aria-label={`Changes per month for 6 months, busiest month ${monthPeak} changes`}>
+                {monthBuckets.map((b) => (
+                  <div
+                    key={b.label}
+                    title={`${b.label}: ${b.count} change${b.count === 1 ? "" : "s"}`}
+                    aria-hidden="true"
+                    className="min-w-0 flex-1 rounded-t bg-[var(--accent-hex)] opacity-80"
+                    style={{ height: `${Math.max(4, Math.round((b.count / monthPeak) * 100))}%`, opacity: b.count === 0 ? 0.15 : 0.8 }}
+                  />
+                ))}
+              </div>
+            </div>
           </div>
         )}
       </Section>

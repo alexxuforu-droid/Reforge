@@ -114,6 +114,10 @@
   "analytics.title": "Aktivitätstrends",
   "analytics.subtitle": "Änderungen pro Tag der letzten 2 Wochen – aus deinem lokalen Verlauf gezählt, nichts hochgeladen",
   "analytics.empty": "Noch keine Aktivität – nimm eine Änderung vor und ihr Tag leuchtet hier auf.",
+  "analytics.daily": "Täglich · letzte 14 Tage",
+  "analytics.monthly": "Monatlich · letzte 6 Monate",
+  "analytics.away": "Letzte Änderung: {desc} ({age}).",
+  "organize.smartFolder.hitCount": "{count} Datei{plural}",
 
   "settings.advanced": "Erweitert",
   "settings.advanced.subtitle": "Alle Konfigurationsdateien von Reforge – sichern oder manuell bearbeiten (die App liest sie beim Start neu)",

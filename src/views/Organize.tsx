@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { errorCopy, call, callWithTimeout, fmt, onEvent } from "../lib/api";
 import { useLoad } from "../lib/useLoad";
+import { useI18n } from "../i18n";
 import type {
   ArchiveMove, BigDupeGroup, BiggestFile, CleanNowItem, DriveRadar, DuplicateScan, MoveOp,
   RecycleBinState, SmartFolder, SmartHit, SwapFileInfo, UnusedFile, WindowsOldInfo,
@@ -15,6 +16,7 @@ type Tab = "storage" | "unused" | "sort" | "duplicates";
 const HOME = "C:\\Users\\you";
 
 export default function Organize() {
+  const { t, lang } = useI18n();
   const [tab, setTab] = useState<Tab>("storage");
 
   // auto-sort
@@ -810,7 +812,7 @@ export default function Organize() {
                 {sfOpenId === sf.id && sfHits && (
                   <div aria-live="polite" className="animate-fade-in ml-6 mt-1 space-y-1 border-l-2 border-[var(--border-accent)] pl-3">
                     <div className="text-2xs font-medium text-[var(--text-secondary)]">
-                      {sfHits.length} file{sfHits.length === 1 ? "" : "s"}
+                      {t("organize.smartFolder.hitCount", { count: sfHits.length, plural: sfHits.length === 1 ? "" : lang === "de" ? "en" : "s" })}
                     </div>
                     {sfHits.slice(0, 5).map((h) => (
                       <div key={h.path} className="truncate text-2xs text-[var(--text-tertiary)]" title={h.path}>{h.path}</div>
