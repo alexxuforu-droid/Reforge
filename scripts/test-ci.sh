@@ -31,6 +31,9 @@ bash scripts/check-repo-size.sh
 echo "==> Startup budget (P3-6) — skips unless a startup.log exists"
 bash scripts/check-startup-budget.sh
 
+echo "==> Perf harness (V2 pillar 1) — diffs vs docs/perf-baseline.json"
+node scripts/perf-run.mjs --scan-mb 120
+
 echo "==> S13.3 4px grid"
 node scripts/check-4px-grid.mjs
 

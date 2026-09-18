@@ -14,7 +14,9 @@
     "test:e2e": "playwright test",
     "lint": "eslint src --max-warnings 0",
     "tauri": "tauri",
-    "test:a11y": "node scripts/check-4px-grid.mjs && node scripts/check-clipping.mjs && node scripts/check-focus-visible.mjs && node scripts/check-contrast.mjs"
+    "test:a11y": "node scripts/check-4px-grid.mjs && node scripts/check-clipping.mjs && node scripts/check-focus-visible.mjs && node scripts/check-contrast.mjs",
+    "perf": "node scripts/perf-run.mjs --scan-mb 120",
+    "perf:baseline": "node scripts/perf-run.mjs --baseline --scan-mb 120"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

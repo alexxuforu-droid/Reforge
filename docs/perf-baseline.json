@@ -1,0 +1,212 @@
+{
+  "ts": "2026-09-18T16:35:55.630Z",
+  "scanFixtureMb": 120,
+  "boot": {
+    "metric": "boot",
+    "ok": true,
+    "ms": 2,
+    "budgetMs": 8000,
+    "log": "C:\\Users\\Admin\\AppData\\Roaming\\com.reforge.app\\startup.log",
+    "samples": 1
+  },
+  "ipc": {
+    "roundTrips": {
+      "perView": {
+        "Accessibility.tsx": {
+          "useLoad": 1,
+          "useLazy": 0,
+          "call": 1,
+          "total": 2
+        },
+        "Dashboard.tsx": {
+          "useLoad": 4,
+          "useLazy": 0,
+          "call": 2,
+          "total": 6
+        },
+        "Displays.tsx": {
+          "useLoad": 2,
+          "useLazy": 0,
+          "call": 3,
+          "total": 5
+        },
+        "Gaming.tsx": {
+          "useLoad": 5,
+          "useLazy": 0,
+          "call": 9,
+          "total": 14
+        },
+        "History.tsx": {
+          "useLoad": 2,
+          "useLazy": 0,
+          "call": 7,
+          "total": 9
+        },
+        "Makeover.tsx": {
+          "useLoad": 6,
+          "useLazy": 18,
+          "call": 59,
+          "total": 83
+        },
+        "MakeoverSession.tsx": {
+          "useLoad": 0,
+          "useLazy": 0,
+          "call": 12,
+          "total": 12
+        },
+        "Marketplace.tsx": {
+          "useLoad": 0,
+          "useLazy": 0,
+          "call": 9,
+          "total": 9
+        },
+        "Network.tsx": {
+          "useLoad": 3,
+          "useLazy": 0,
+          "call": 3,
+          "total": 6
+        },
+        "Organize.tsx": {
+          "useLoad": 4,
+          "useLazy": 0,
+          "call": 18,
+          "total": 22
+        },
+        "Performance.tsx": {
+          "useLoad": 3,
+          "useLazy": 0,
+          "call": 2,
+          "total": 5
+        },
+        "Power.tsx": {
+          "useLoad": 1,
+          "useLazy": 0,
+          "call": 3,
+          "total": 4
+        },
+        "Productivity.tsx": {
+          "useLoad": 5,
+          "useLazy": 0,
+          "call": 8,
+          "total": 13
+        },
+        "Security.tsx": {
+          "useLoad": 6,
+          "useLazy": 0,
+          "call": 28,
+          "total": 34
+        },
+        "Settings.tsx": {
+          "useLoad": 10,
+          "useLazy": 0,
+          "call": 25,
+          "total": 35
+        },
+        "Tuneup.tsx": {
+          "useLoad": 7,
+          "useLazy": 0,
+          "call": 9,
+          "total": 16
+        }
+      },
+      "totalRoundTripSites": 275,
+      "getUndoLogSites": 5
+    },
+    "payload": {
+      "fullLogBytes": 336802,
+      "digestBytes": 664,
+      "ratio": 507.2,
+      "entries": 200
+    }
+  },
+  "scan": {
+    "metric": "scan",
+    "fixtureDir": "C:\\Users\\Admin\\AppData\\Local\\Temp\\reforge-perf-fixture",
+    "files": 260,
+    "scannedBytes": 125829120,
+    "scannedGb": 0.12,
+    "secs": 0.18,
+    "gbPerSec": 0.66,
+    "filesPerSec": 1462,
+    "groups": 10,
+    "cascade": "size-prefilter(1MB) -> quick(len+64K head+64K tail) -> full(sha256)",
+    "engine": "node-sequential (before: Rust WalkDir sequential; target: rayon parallel walker)"
+  },
+  "bundle": {
+    "metric": "bundle",
+    "distAssetsBytes": 1021933,
+    "jsBytes": 957769,
+    "cssBytes": 64164,
+    "jsFiles": 42,
+    "top10": [
+      {
+        "name": "index-EGL5jvtf.js",
+        "bytes": 303686
+      },
+      {
+        "name": "whip-CLDKr-iY.js",
+        "bytes": 97890
+      },
+      {
+        "name": "Makeover-DETV7CEl.js",
+        "bytes": 86657
+      },
+      {
+        "name": "mock-a33qSH2y.js",
+        "bytes": 76848
+      },
+      {
+        "name": "scene_styles-CPmlLBM3.js",
+        "bytes": 64834
+      },
+      {
+        "name": "index-LQD5x4LC.css",
+        "bytes": 64164
+      },
+      {
+        "name": "index-CTx2sWyd.js",
+        "bytes": 47184
+      },
+      {
+        "name": "Settings-dp3kIWlQ.js",
+        "bytes": 31827
+      },
+      {
+        "name": "Security-DELW6JLT.js",
+        "bytes": 24331
+      },
+      {
+        "name": "MakeoverSession-Ro6l0pV9.js",
+        "bytes": 23459
+      }
+    ],
+    "lazyCandidates": {
+      "whipBytes": 97890,
+      "funBytes": 49562,
+      "mockBytes": 76848,
+      "makeoverBytes": 86657,
+      "whipFiles": [
+        "whip-CLDKr-iY.js"
+      ],
+      "funFiles": [
+        "quiz-DQBOFGnM.js",
+        "particles-engine-Du245BnD.js",
+        "pet-Cn9luF1Z.js",
+        "fire-UtOhaaKo.js",
+        "glitch-DSg70Wt8.js",
+        "rage-BN8UrrEP.js",
+        "bsod-DY8yXnGt.js",
+        "boss-_jckPPA4.js",
+        "roast-Cj2aujHm.js",
+        "confetti-Di8Pw2kx.js",
+        "smash-DKsBLjSm.js"
+      ]
+    },
+    "rustDepAudit": {
+      "symphonia": "symphonia = { version = \"0.5\", features = [\"mp3\", \"aac\", \"ogg\", \"flac\", \"wav\", \"isomp4\"] }",
+      "image": "image = { version = \"0.25\", default-features = false, features = [\"png\", \"jpeg\", \"bmp\", \"gif\"] }"
+    },
+    "exeBytes": null,
+    "note": "exe floor documented in docs/DELIVERY.md (ffmpeg sidecar); not a target"
+  }
+}
