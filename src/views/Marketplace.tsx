@@ -319,6 +319,11 @@ export default function Marketplace() {
             <h2 className="widget-title">Featured looks</h2>
             <div className="flex items-center gap-2">
               <button className="btn-ghost btn-sm" aria-label="Previous look" disabled={bundles.length < 2} onClick={() => setFeaturedIndex((selectedIndex + bundles.length - 1) % bundles.length)}>Previous</button>
+              <span className="flex items-center gap-1" aria-hidden="true">
+                {bundles.map((b, i) => (
+                  <span key={b.id} className={`h-1.5 w-1.5 rounded-full ${i === selectedIndex ? "bg-[var(--accent-hex)]" : "bg-[var(--surface-active)]"}`} />
+                ))}
+              </span>
               <span className="text-xs tabular-nums text-[var(--text-secondary)]">{selectedIndex + 1} / {bundles.length}</span>
               <button className="btn-ghost btn-sm" aria-label="Next look" disabled={bundles.length < 2} onClick={() => setFeaturedIndex((selectedIndex + 1) % bundles.length)}>Next</button>
             </div>
