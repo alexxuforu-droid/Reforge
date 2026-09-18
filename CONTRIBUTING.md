@@ -57,6 +57,12 @@ rather than just the feature — a short use case goes a long way.
 - Rust follows `cargo fmt` conventions and the existing module layout in
   `src-tauri/src/`.
 
+## Security
+
+See `SECURITY.md`. In short: report vulnerabilities privately (never in a
+public issue), and remember the project's design posture — packs are
+data-only, everything is reversible, and nothing phones home.
+
 ## License
 
 The project is released under GPL-3.0 (see `LICENSE`). By contributing you

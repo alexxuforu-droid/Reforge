@@ -5,40 +5,73 @@ machine in a guided, fully-reversible session — every change can be undone wit
 
 Built with **Tauri 2 + Rust + React + TypeScript + Tailwind**.
 
-> Windows only (Windows 10 & 11). See `docs/PC-Makeover-Spec.md` for the technical spec.
+> Windows only (Windows 10 & 11). See `docs/PC-Makeover-Spec.md` for the technical
+> spec and `docs/ROADMAP.md` for the plan to v1.0.
 
-[![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPL-3.0-blue.svg)](LICENSE)
 [![GitHub Release](https://img.shields.io/github/v/release/vasilescualex07-droid/Reforge)](https://github.com/vasilescualex07-droid/Reforge/releases)
+
+> **Status (2026-08-16):** the app is feature-complete for its first release —
+> **17 sections, 263 backend commands**, 116 Rust tests, 35 frontend test files.
+> `v0.1.0` is tagged and the release pipeline is ready to produce the first
+> public build. Releases are **unsigned by decision** — Windows may show
+> "Unknown publisher" on first run; that's expected and never pretended away.
+> Trust builds through SmartScreen download reputation over time (see
+> `docs/DELIVERY.md` §1).
 
 ## Download & install
 
 Grab the latest installer (e.g. `Reforge_0.1.0_x64-setup.exe`) from the
 [Releases page](https://github.com/vasilescualex07-droid/Reforge/releases) — a
-per-user install, no admin rights needed. In-app, Settings → "Check for updates" polls the
-same channel and installs newer versions silently.
+per-user install, no admin rights needed. In-app, Settings → "Check for updates"
+polls the same channel and installs newer versions silently (sha256-verified,
+staged, then swapped by the NSIS installer).
 
-> **Note:** releases are currently **unsigned**, so Windows may show
-> "Unknown publisher" / "Windows protected your PC" on first run. That is
-> expected for a new app and fades as download reputation builds
-> (see `docs/DELIVERY.md`).
+## The 17 sections
 
-## What's implemented
+| Section | What it does |
+|---|---|
+| **Dashboard** | Health + personalization scores, storage-freed / time-saved counters, quick actions, recent activity, resource hogs |
+| **Makeover** | Guided, fully-reversible makeover session with style quiz and previews |
+| **Style Studio** | The creative workshop (see below) |
+| **Marketplace** | Local look packs (`.reforgepack`): import, export, apply, delete — one file, one atomic reversible apply |
+| **Performance** | Live CPU/RAM/disk graphs, battery + battery health, top processes, resource leaderboard, history |
+| **Tune-up** | Junk cleaner, startup manager, bloatware uninstaller, RAM optimizer, registry cleaner, power plans, task auditor, boot-time tracker, extension auditor, file-association reset, driver inventory |
+| **Organize** | Duplicate finder, auto-sort, storage radar, biggest files, smart folders, archiver, batch rename, screenshot organizer, downloads expiry, unused-app flagging, cross-cloud dupes, Recycle Bin, Windows.old |
+| **Security** | Security sweep, permission auditor (mic/cam/location kill-switch), browser privacy hardening, USB history, and a **Windows Security Center** (Defender health, quick/full scans, threats, Controlled Folder Access, ASR rules, autorun threat audit, definition updates) |
+| **Productivity** | Clipboard history, quick launcher, if-then macros, focus mode |
+| **Displays** | Monitor info, per-monitor wallpapers, display profiles |
+| **Network** | Bandwidth hogs, Wi-Fi backup/forget/restore, network reset, VPN |
+| **Gaming** | Game Mode, stream-safe layout, per-game profiles applied automatically |
+| **Power** | Live battery, power plans, screen-off timeout, hibernate |
+| **Accessibility** | Simplified mode, UI scaling, color-blind palettes, reduced motion |
+| **History** | Undo timeline grouped by day, per-entry revert, versioned snapshots, Factory Fresh |
+| **Widgets** | Fun corner: desktop overlays, achievements, boss key, screen capture |
+| **Settings** | Automation schedules, blue light filter, media transcode presets, update channel, RGB lighting (OpenRGB), profile export/import, splash config |
 
-### Makeover
+## Style Studio — the creative workshop
+
 | Feature | Status |
 |---|---|
-| **Animated Wallpaper Engine** — 20 procedural scenes (aurora, waves, particles, stars, matrix, embers…) rendered in a borderless window behind your icons; battery-saver auto-pause, freeze-frame, static-wallpaper restore, survives restarts | ✅ |
+| **Animated Wallpaper Engine** — 20 procedural scenes (aurora, waves, particles, stars, matrix, embers…) in a borderless window behind your icons; battery-saver pause, freeze-frame, static restore, survives restarts | ✅ |
 | **Wallpaper Studio** — template builder (8 scene types) with speed/density/color sliders + live preview | ✅ |
-| **Widget Engine** — desktop widgets: clock, live CPU/RAM/disk stats, sticky notes, to-do, calendar (always-on-top, draggable, saved) | ✅ |
-| **Theme Studio** — dark/light, accent color, transparency (registry + shell refresh) | ✅ |
+| **Video wallpapers** — MP4/WebM/GIF imported through a bundled ffmpeg pipeline (3 quality presets, progress events, 500 MB cap) | ✅ |
+| **Wallpaper slideshow** — rotation + history, per-monitor `IDesktopWallpaper` COM | ✅ |
+| **Theme Studio** — dark/light, accent color, transparency (registry + shell refresh, OS-follow) | ✅ |
 | **Style packs & quiz** — 6 curated looks, procedural gradient wallpapers, deterministic 5-question quiz | ✅ |
-| **Wallpaper engine (static)** — `SystemParametersInfo` + per-monitor `IDesktopWallpaper` COM | ✅ |
-| **Cursor schemes** — apply Aero / Black / system-default with undo | ✅ |
+| **Cursor schemes** — Aero / Black / system-default with undo | ✅ |
+| **Sound schemes** — apply Windows schemes, set individual event sounds, preview, import assets, save your own | ✅ |
+| **Fonts** — install per-user fonts, substitute system fonts (admin-gated, capability-checked) | ✅ |
+| **Taskbar redesign** — size, alignment, autohide, color-match, position via a safe pending-restart orchestrator | ✅ |
+| **Lock screen** — custom image, slideshow folder, spotlight toggle, hide lock-screen apps | ✅ |
+| **Screensaver** — registers the app as the Windows screensaver; plays a scene fullscreen on idle, any input dismisses | ✅ |
+| **Widget Engine** — clock, live CPU/RAM/disk stats, sticky notes, to-do, calendar (always-on-top, draggable, saved) | ✅ |
 
-### Tune-up & cleanup
+## Tune-up, cleanup & optimization
+
 | Feature | Status |
 |---|---|
-| **Junk cleaner** — dry-run scan, sizes, confirm-before-delete | ✅ |
+| **Junk cleaner** — dry-run scan, sizes, confirm-before-delete, clean-now | ✅ |
 | **Startup manager** — HKCU/HKLM Run + Startup folder, reversible disable | ✅ |
 | **Bloatware uninstaller** — curated scan of pre-installed junk, launches the app's own uninstaller | ✅ |
 | **RAM optimizer** — top memory consumers, end process (logged) | ✅ |
@@ -49,98 +82,94 @@ same channel and installs newer versions silently.
 | **Browser extension auditor** — Chrome/Edge/Brave/Firefox, flags unknown-sourced | ✅ |
 | **Default app manager** — reset hijacked file associations (backup + revert) | ✅ |
 | **Driver inventory** — pnputil enumeration (read-only) | ✅ |
+| **Storage liberation** — storage radar, biggest files, Recycle Bin size/empty, Windows.old, swap files, big-dupe groups | ✅ |
 | **Scheduled maintenance** — one-click junk + duplicate + storage sweep, dated reports | ✅ |
 
-### Organize
+## Organize, security & network
+
 | Feature | Status |
 |---|---|
 | **Duplicate finder** — hash-based, staging trash (reversible), permanent empty | ✅ |
 | **Auto-sort** — rule-based filing by type or date, preview-first, reversible | ✅ |
-| **Storage visualizer** — top folders by size | ✅ |
-| **Smart folders** — dynamic saved searches (extensions + age) that re-run | ✅ |
-| **Old file archiver** — zip files untouched N+ months, fully undoable extraction | ✅ |
-| **Batch rename** — prefix + counter with preview, reversible | ✅ |
-| **Screenshot organizer** — routes screenshots into YYYY/MM folders | ✅ |
-| **Downloads auto-expiry** — stale downloads to Recycle Bin (restorable) | ✅ |
-| **Unused-app flagging** — apps not updated in 90+ days | ✅ |
-| **Cross-cloud duplicate finder** — same file in OneDrive/Dropbox/Drive | ✅ |
-
-### Security
-| Feature | Status |
-|---|---|
+| **Storage visualizer / smart folders / archiver / batch rename / screenshot organizer / downloads auto-expiry / unused-app flagging / cross-cloud duplicate finder** | ✅ |
 | **Security sweep** — read-only audit: telemetry, startup risk, Wi-Fi, firewall, bloatware | ✅ |
 | **Permission auditor** — per-app mic/camera/location with global kill-switch (revertible) | ✅ |
 | **Browser privacy hardening** — one-click policies for Chrome/Edge, revertible | ✅ |
 | **USB device history** — read-only view of USBSTOR | ✅ |
-
-### Productivity / Network / Gaming / Displays
-| Feature | Status |
-|---|---|
+| **Windows Security Center** — health status, quick/full scans, threats (restore/remove), Controlled Folder Access, ASR rules, autorun threat surface, definitions update | ✅ |
 | **Clipboard manager** — live history, search, pin, clear (local-only) | ✅ |
 | **Quick launcher** — every Start-Menu app, one click away | ✅ |
 | **Automation macros** — "when app X starts → apply look Y" | ✅ |
 | **Focus mode** — hide desktop icons (revertible) | ✅ |
-| **Bandwidth hog finder** — active connections by process | ✅ |
-| **Saved Wi-Fi cleanup** — forget networks with profile-XML backup + restore | ✅ |
-| **One-click network reset** — flush DNS, renew IP, winsock/TCP reset (logged) | ✅ |
-| **Game Mode** — registry-backed toggle, revertible | ✅ |
-| **Stream-safe layout** — hide icons + auto-hide taskbar for going live | ✅ |
+| **Bandwidth hog finder / Wi-Fi cleanup (backup+restore) / network reset / VPN** | ✅ |
+| **Game Mode / stream-safe layout / per-game profiles** | ✅ |
 | **Displays** — monitor info, per-monitor wallpapers, display profiles save/apply | ✅ |
+| **Power** — live battery, plans, screen-off timeout, hibernate | ✅ |
 
-### Core & UX
+## Core & UX
+
 | Feature | Status |
 |---|---|
 | **Undo system** — granular per-change log, per-entry revert, versioned snapshots, Factory Fresh | ✅ |
-| **Makeover History Timeline** — grouped by day, time-stamped sessions | ✅ |
+| **History timeline** — grouped by day, time-stamped sessions | ✅ |
 | **Health + Personalization scores**, storage-freed & time-saved counters | ✅ |
-| **Dashboard** — quick actions, recent activity, resource hogs | ✅ |
-| **Scheduled maintenance / automation** — weekly junk, monthly dupes, auto re-apply theme | ✅ |
+| **Scheduled automation** — weekly junk, monthly dupes, auto re-apply theme, blue-light schedule | ✅ |
 | **Blue light filter** — warm gamma ramp, revertible, restored on launch | ✅ |
-| **Accessibility** — simplified mode, UI scaling, color-blind palettes | ✅ |
+| **Accessibility** — simplified mode, UI scaling, color-blind palettes, reduced motion | ✅ |
 | **Profile export/import** — `.reforge` JSON bundle | ✅ |
 | **Command palette** — Ctrl+K search over views & actions | ✅ |
 | **Welcome wizard + 20-20-20 break reminders** | ✅ |
-| **12 views:** Dashboard, Makeover, Performance, Tune-up, Organize, Security, Productivity, Displays, Network, Gaming, History, Settings | ✅ |
+| **Splash screen** — backend config + optional launch-at-login exist; Settings UI on the roadmap | 🟡 |
+| **i18n** — English + Spanish dictionaries (full coverage is on the roadmap) | 🟡 |
 
-**Not built (needs third-party SDKs / servers / locked-down OS features / media pipelines):**
-video/GIF wallpaper files (no codec pipeline), sound scheme editor, font replacer,
-taskbar redesigner, lock-screen designer, right-click themer, folder color-coding,
-animated screensaver studio, boot/login screen skinning (locked down on Win11),
-RGB sync (vendor SDKs), pack marketplace (server), encrypted cloud backup (backend).
-These are the honest next milestones.
+**Not built yet (planned or honestly out of scope):** boot/login screen skinning
+(locked down on Win11 — capability-gated as unsupported), right-click themer,
+folder color-coding, context-menu theming, remote pack gallery (local marketplace
+ships first), encrypted cloud backup, telemetry (nothing leaves the device today).
 
 ## Architecture
 
 ```
 src/                     React + TS + Tailwind UI (Vite)
+  App.tsx                shell: nav, command palette, wizard, error boundary
+  views/                 17 views (Dashboard, Makeover, Style Studio, Marketplace,
+                         Performance, Tune-up, Organize, Security, Productivity,
+                         Displays, Network, Gaming, Power, Accessibility, History,
+                         Widgets, Settings)
+  components/            shared UI, ScenePreview canvases, style studio, wizard
+  features/widgets/      widget hub + registry + runtime
   lib/api.ts             typed command wrappers; in-browser mock backend for preview
-  lib/types.ts           shared types for all 90+ commands
-  views/                 12 views (Dashboard, Makeover, Tuneup, Organize, Security,
-                         Productivity, Displays, Network, Gaming, Performance, History, Settings)
-  components/ui.tsx      shared UI + animated ScenePreview canvases
-src-tauri/               Rust backend (Tauri 2)
-  src/wallpaper_engine.rs  animated wallpaper window (WebView2 canvas scenes, battery monitor)
-  src/widgets.rs           desktop widget windows (clock/stats/note/todo/calendar)
-  src/theme.rs             registry-backed personalization + undo logging
-  src/wallpaper.rs         SPI + IDesktopWallpaper (per-monitor)
-  src/packs.rs             built-in looks + procedural gradient generation (image crate)
-  src/cleanup.rs           whitelisted junk targets, dry-run scan, safe clean
-  src/startup.rs           Run keys + startup folder, reversible disable
-  src/tuneup.rs            bloatware, RAM, registry cleaner, power plans, task audit, boot, extensions, associations
-  src/files.rs             smart folders, archiver, rename, screenshots, downloads, cloud dupes
-  src/security.rs          audit + permission auditor + browser policies + USB history
-  src/productivity.rs      clipboard monitor, launcher, macros, focus mode
-  src/network.rs           bandwidth hogs, Wi-Fi backup/forget, network reset
-  src/gaming.rs            game mode, stream-safe layout
-  src/displays.rs          monitor info + display profiles
-  src/automation.rs        schedules + blue-light gamma filter
-  src/dashboard.rs         personalization score, storage freed, time saved
-  src/undo.rs              granular undo log, versioned snapshots, factory-fresh restore
-  src/system.rs            sysinfo aggregation + health score
+  lib/types.ts           shared types for all 263 commands
+  lib/                   events, formatting, session store, share codes, style apply/remix
+  i18n/                  en.json, es.json
+src-tauri/               Rust backend (Tauri 2) — 57 modules, 263 commands
+  wallpaper_engine.rs    animated wallpaper window (WebView2 canvas scenes, battery monitor)
+  wallpaper_video.rs     video wallpaper window (WorkerW) · transcode.rs  ffmpeg pipeline
+  wallpaper_static.rs    slideshow rotation + history · wallpaper.rs  SPI + IDesktopWallpaper
+  widgets.rs             desktop widget windows (clock/stats/note/todo/calendar)
+  theme.rs / styles.rs / packs.rs / cursors.rs / palette.rs   look & feel
+  sounds.rs              sound schemes · fonts.rs  font install/substitute
+  shell.rs               taskbar redesign (pending-restart orchestrator)
+  lockscreen.rs          lock-screen image/slideshow/spotlight
+  screensaver.rs         screensaver registration + fullscreen scene mode
+  rgb.rs                 OpenRGB lighting (TCP SDK protocol)
+  marketplace.rs         local .reforgepack bundles
+  security_center.rs     Windows Security Center (Defender, threats, CFA, ASR)
+  security.rs            audit + permissions + browser policies + USB history
+  cleanup.rs / startup.rs / tuneup.rs   junk, startup, bloatware, plans, tasks, boot
+  files.rs / duplicates.rs / organize.rs / storage.rs / saves.rs   organize & storage
+  productivity.rs / network.rs / gaming.rs / displays.rs / power.rs / perf.rs
+  automation.rs          schedules + blue-light · maintenance.rs  reports
+  dashboard.rs / system.rs   scores + health · fun/  overlay widgets & achievements
+  undo.rs                granular undo log, versioned snapshots, factory-fresh restore
+  migrations.rs / restore.rs / state.rs / storage.rs   versioned state + boot restore
+  capability.rs          OS capability matrix + elevation · splash.rs  splash config
+  updater.rs             sha256-verified update pipeline · cmd.rs / error.rs  infra
 ```
 
 All state (settings, undo log, snapshots, generated wallpapers, clipboard history,
-widgets, macros, schedules) lives in the app data directory (`%APPDATA%\com.reforge.app`).
+widgets, macros, schedules) lives in the app data directory
+(`%APPDATA%\com.reforge.app`) as versioned JSON with a migration system.
 Local-first: nothing leaves the device without explicit opt-in.
 
 ## Prerequisites
@@ -171,10 +200,20 @@ npm run tauri build
 # developer prompt:
 cargo check
 cargo test
+cargo clippy -- -D warnings
 ```
 
-> The Rust backend is only compiled for Windows targets — it uses the `windows` crate,
-> registry access, and COM interfaces directly.
+> The Rust backend is only compiled for Windows targets — it uses the `windows`
+> crate, registry access, and COM interfaces directly.
+
+## Testing
+
+```bash
+npm test                # 35 frontend test files (vitest)
+cargo test              # 116 Rust unit tests (MSVC env required)
+npm run lint            # eslint, zero warnings
+npm run test:a11y       # 4px grid, clipping, focus-visible, contrast checks
+```
 
 ## Safety model
 
@@ -184,6 +223,17 @@ cargo test
   folder, never deletes blindly.
 - Registry cleanups and Wi-Fi forgets keep backups that History can restore.
 - "Factory Fresh" restores the earliest snapshot captured before a makeover session.
+- Long operations (scans, transcodes) run off the main thread and emit progress events.
+- Every command returns a typed `Result<T, AppError>`; inputs are validated Rust-side
+  before touching the filesystem, registry, or a shell.
+
+## Roadmap
+
+The plan to v1.0 — 7 phases, from "ship the truth" to "scale", with file-level
+work items and a prioritized backlog — lives in
+**[docs/ROADMAP.md](docs/ROADMAP.md)**. Delivery decisions (unsigned-by-decision
+posture, startup handoff, exe size) are recorded in
+[docs/DELIVERY.md](docs/DELIVERY.md).
 
 ## Contributing
 

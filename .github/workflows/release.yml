@@ -6,19 +6,18 @@
 # Pushes to main do NOT build — every-commit builds used to spawn a 20+ min
 # cold compile and a draft release on each push.
 #
-# Flow: npm ci → typecheck + tests → `tauri build` (frontend + release exe +
-# NSIS/MSI bundles) → sign with signtool (when the cert secrets are set) →
-# upload everything to a draft GitHub Release. Publishing the draft is a
-# manual step so a bad build never ships.
+# Flow: npm ci → typecheck + tests → Rust checks (fmt + clippy + tests) →
+# `tauri build` (frontend + release exe + NSIS/MSI bundles) → upload
+# everything to a draft GitHub Release. Publishing the draft is a manual step
+# so a bad build never ships.
 #
-# Secrets to configure (repo → Settings → Secrets and variables → Actions):
-#   REFORGE_CERT_PFX       base64 of the code-signing .pfx (OV/EV for production)
-#   REFORGE_CERT_PASSWORD  PFX password
+# Reforge ships unsigned by decision (docs/DELIVERY.md §1) — there is no
+# signing step and no cert secrets to configure.
 #
 # The updater manifest ({"version","url","sha256","notes"}) is generated and
 # attached to the draft release as `latest.json`. The app's
 # UpdateConfig.manifest_url points at
-# https://github.com/<owner>/Reforged/releases/latest/download/latest.json
+# https://github.com/vasilescualex07-droid/Reforge/releases/latest/download/latest.json
 # (tag-independent, so it keeps working across releases).
 name: release
 
@@ -38,7 +37,12 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 90
     steps:
+      # Full history — the updater manifest derives its release notes from
+      # `git log` since the previous tag (P4-2); a shallow clone would fall
+      # back to a placeholder.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -58,10 +62,21 @@ jobs:
       - name: Install frontend deps
         run: npm ci
 
-      - name: Typecheck + tests
+      - name: Typecheck + frontend tests
         run: |
           npx tsc --noEmit
           npm test
+
+      # Roadmap P0-5 — the Rust side is gated here too: fmt, clippy with
+      # -D warnings, and all unit tests. windows-latest ships MSVC and
+      # dtolnay/rust-toolchain defaults to the MSVC host.
+      - name: Rust checks (fmt + clippy + tests)
+        working-directory: src-tauri
+        shell: bash
+        run: |
+          cargo fmt --check
+          cargo clippy --all-targets -- -D warnings
+          cargo test
 
       # S12.4 — one build, all artifacts: frontend (beforeBuildCommand),
       # release exe, and the NSIS + MSI installers (bundle.resources ships
@@ -79,13 +94,12 @@ jobs:
         shell: bash
         run: cp src-tauri/resources/bin/ffmpeg.exe src-tauri/target/release/ffmpeg.exe
 
-      # S12.2 — sign exe + installer when the cert secrets are present
-      - name: Sign artifacts
+      # P4-4 — portable artifact: exe + ffmpeg sidecar in one zip, USB-stick
+      # ready (docs/PORTABLE.md explains the workflow).
+      - name: Build portable zip
         shell: pwsh
-        env:
-          REFORGE_CERT_PFX: ${{ secrets.REFORGE_CERT_PFX }}
-          REFORGE_CERT_PASSWORD: ${{ secrets.REFORGE_CERT_PASSWORD }}
-        run: powershell -ExecutionPolicy Bypass -File scripts/sign-release.ps1
+        run: |
+          Compress-Archive -Path src-tauri/target/release/reforge.exe, src-tauri/target/release/ffmpeg.exe -DestinationPath Reforge_portable_win_x64.zip -Force
 
       - name: Generate updater manifest
         id: manifest
@@ -100,14 +114,30 @@ jobs:
           # resolves /tmp differently than bash on Windows, which silently
           # dropped the manifest from the release.
           python - "$VERSION" "$SHA256" > latest.json <<'EOF'
-          import json, sys
+          import json, subprocess, sys
           version, sha256 = sys.argv[1], sys.argv[2]
+          # P4-2 — real release notes: commit subjects since the previous tag
+          # (or the last 15 commits on a first release), so the in-app update
+          # dialog says what actually changed instead of "Automated release build."
+          try:
+              prev = subprocess.run(
+                  ["git", "describe", "--tags", "--abbrev=0", "HEAD~1"],
+                  capture_output=True, text=True, check=False
+              ).stdout.strip()
+              rng = f"{prev}..HEAD" if prev else "HEAD~15..HEAD"
+              log = subprocess.run(
+                  ["git", "log", "--oneline", rng],
+                  capture_output=True, text=True, check=False
+              ).stdout.strip().splitlines()[:20]
+              notes = log if log else ["Automated release build."]
+          except Exception:
+              notes = ["Automated release build."]
           print(json.dumps({
               "version": version,
               # NSIS installer name carries version + arch (e.g. Reforge_0.1.0_x64-setup.exe)
               "url": f"https://github.com/${{ github.repository }}/releases/latest/download/Reforge_{version}_x64-setup.exe",
               "sha256": sha256,
-              "notes": ["Automated release build."],
+              "notes": notes,
           }, indent=2))
           EOF
           echo "manifest=$(base64 -w0 latest.json)" >> "$GITHUB_OUTPUT"
@@ -122,6 +152,7 @@ jobs:
             src-tauri/target/release/reforge.exe
             src-tauri/target/release/bundle/nsis/*-setup.exe
             src-tauri/target/release/bundle/msi/*.msi
+            Reforge_portable_win_x64.zip
             latest.json
           # Fail loudly: a silently-missing artifact used to ship a release
           # without the installer and the update manifest.

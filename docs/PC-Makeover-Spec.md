@@ -224,66 +224,32 @@ versioning. *(Only if the personal tool proves good.)*
 3. Pack format + manager + preview canvas.
 4. Tune-up scanner with dry-run.
 
-## 11. Build Status (2026-08-10)
+## 11. Build Status — SUPERSEDED (updated 2026-08-16)
 
-**Shipped (second pass — 2026-08-10):**
-- Live performance dashboard (CPU/RAM SVG graphs, disks, battery, uptime, top processes)
-  — Module F core.
-- Duplicate finder (hash-based, staging trash) + storage visualizer + reversible
-  auto-sort — Modules B & C core.
-- Cursor scheme apply (Aero/Black/default) — Module A subset.
-- Security sweep (read-only audit: telemetry, startup risk, Wi-Fi, firewall, bloatware)
-  — Module E subset.
-- Scheduled maintenance reports — Module O core.
-- Style match quiz + welcome wizard — Modules G & I.
-- Command palette (Ctrl+K) + 20-20-20 break reminders — Modules D & N subsets.
-- Profile export/import (.reforge JSON) — Module H.
+> This status section dates from the original build passes (2026-08-10) and is
+> no longer accurate. The authoritative, audited picture of what's built lives
+> in **README.md** (17 sections, 263 commands, 116 Rust tests, 35 frontend
+> test files), and the forward plan lives in **docs/ROADMAP.md**. The stale
+> lists below were removed so they can't contradict the code.
 
-**Shipped (first pass — Phases 0–3 + part of V2):**
-- Tauri 2 + React + TS + Tailwind scaffold — compiles, links, tests green.
-- Theme Studio (accent, dark/light, transparency) with registry access + undo logging.
-- Wallpaper engine: SPI set/get + `IDesktopWallpaper` per-monitor.
-- 6 built-in style packs with procedurally generated gradient wallpapers (2560×1440).
-- Junk cleaner (dry-run scan + safe clean of whitelisted dirs) + startup manager
-  (HKCU/HKLM Run + startup folder, reversible disable).
-- Granular undo log (JSON), snapshots, per-entry revert, Factory Fresh.
-- Health score + system info + 5-view UI, verified in browser preview against a mock
-  backend and typechecked (`tsc`), frontend built (`vite build`), backend built and
-  unit-tested (`cargo build`, `cargo test` — 8 passing).
+**What the audit (2026-08-16) found the spec-era "not built" items actually
+are today:**
 
-**Deviations from spec (deliberate):**
-- SQLite → JSON files for settings/undo/snapshots (avoids a C compiler dependency in
-  the dep tree; storage layer is swappable).
-- Cleanup deletes temp/cache files permanently (they are regenerable); user documents
-  are never touched.
-- Startup disablement stores raw values in the undo log rather than a backup key.
+| Spec-era "not built" | Today |
+|---|---|
+| video/GIF wallpaper files | ✅ built (`transcode.rs` ffmpeg pipeline + `wallpaper_video.rs`) |
+| sound/font packs | ✅ built (`sounds.rs` schemes, `fonts.rs` install/substitute) |
+| taskbar redesign | ✅ built (`shell.rs` pending-restart orchestrator) |
+| lock-screen redesign | ✅ built (`lockscreen.rs` image/slideshow/spotlight) |
+| screensaver studio | ✅ built (`screensaver.rs` registers the app as the screensaver) |
+| RGB sync | ✅ built (`rgb.rs` via the OpenRGB protocol) |
+| marketplace | ✅ built (local `.reforgepack` bundles + Marketplace view) |
+| boot/login skinning | ❌ intentionally not built (locked down on Win11; capability-gated as unsupported) |
+| context-menu skinning, folder color-coding | ❌ not built (backlog — roadmap §D) |
+| cloud backup | ❌ not built (optional decision — roadmap Phase 6) |
 
-**Shipped (second pass — Phase 2 prompt):**
-- Animated Wallpaper Engine: 20 procedural scenes in a borderless always-on-bottom
-  WebView2 window (parented to the desktop worker when possible), battery-saver pause,
-  freeze-frame, static restore, persistence across restarts + Wallpaper Studio builder.
-- Widget Engine: clock/stats/note/todo/calendar desktop widgets (transparent windows,
-  live stats push, local auto-save).
-- Tune-up: bloatware uninstaller, RAM optimizer, orphaned-registry cleaner, power plan
-  tuner, scheduled-task auditor, boot-time tracker, browser-extension auditor, file
-  association reset, driver inventory.
-- Organize: smart folders, old-file archiver (zip + undoable extract), batch rename,
-  screenshot organizer, downloads expiry (Recycle Bin), unused-app flagging,
-  cross-cloud duplicate finder.
-- Security: permission auditor with kill-switch, browser privacy policies, USB history.
-- Productivity: clipboard history monitor, quick launcher, if-then macros (process
-  watcher), focus mode. Network: bandwidth hogs, Wi-Fi backup/forget/restore, network
-  reset. Gaming: game mode, stream-safe layout. Displays: monitor info + profiles.
-- Automation: scheduled maintenance (weekly junk / monthly dupes / theme re-apply),
-  blue-light gamma filter (revertible, restored on launch).
-- Dashboard: personalization score, storage-freed & time-saved counters, history preview.
-- UI: 12 views, history timeline, versioned backups, accessibility (simplified mode,
-  scaling, color-blind palettes). ~90 backend commands; cargo build/test + tsc +
-  vite build all green; every flow clicked through in the live browser preview.
-
-**Still not built (needs vendor SDKs / servers / media pipelines / locked-down OS):**
-video/GIF wallpaper files, sound/font packs, taskbar & lock-screen redesign, context-menu
-skinning, screensaver studio, boot/login skinning, RGB sync, marketplace, cloud backup.
-
-**Next milestones:** animated wallpapers, cursor/sound/font packs, widget engine,
-performance dashboard graphs, duplicate finder, security sweep, pack import/export.
+**Also landed since the spec was written:** Windows Security Center integration
+(`security_center.rs`, 25 commands), storage liberation (radar, biggest files,
+Recycle Bin, Windows.old), a Power view, splash config, the fun-widgets hub
+(overlays, achievements, boss key), i18n (en/es), **17 views instead of 12**,
+and **263 backend commands instead of ~90**.

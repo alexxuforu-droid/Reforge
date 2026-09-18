@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reforge — Give Windows a spa day</title>
+<meta name="description" content="Reforge — the Windows personalization suite. Live wallpapers, custom sounds, fonts, taskbar redesign, lock screens, security center, and more. Free, open source, local-first.">
+<style>
+  :root {
+    --bg: #0b0f1c; --surface: #12172a; --surface-2: #1a2138; --border: #2a3352;
+    --text: #e8ecf8; --text-dim: #98a2c0; --accent: #6D7CFF; --accent-2: #8f9bff;
+    --good: #34d399; --warn: #fbbf24;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    background: radial-gradient(1200px 600px at 80% -10%, #1b2450 0%, var(--bg) 55%);
+    color: var(--text); min-height: 100vh; line-height: 1.6;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 48px 24px 80px; }
+  header { display: flex; align-items: center; gap: 12px; margin-bottom: 40px; }
+  .logo {
+    width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center;
+    background: linear-gradient(135deg, var(--accent), #c084fc); font-weight: 800; font-size: 22px;
+    box-shadow: 0 8px 24px rgba(109, 124, 255, .35);
+  }
+  .tag { color: var(--text-dim); font-size: 14px; }
+  h1 { font-size: clamp(30px, 5vw, 48px); letter-spacing: -0.5px; margin: 8px 0 12px; }
+  .lead { color: var(--text-dim); font-size: 17px; max-width: 640px; }
+  .downloads { display: flex; flex-wrap: wrap; gap: 14px; margin: 32px 0; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 10px; padding: 14px 22px; border-radius: 12px;
+    text-decoration: none; font-weight: 600; font-size: 15px; border: 1px solid var(--border);
+    transition: transform .12s ease, box-shadow .12s ease; background: var(--surface-2); color: var(--text);
+  }
+  .btn:hover { transform: translateY(-2px); box-shadow: 0 10px 28px rgba(0,0,0,.35); }
+  .btn.primary { background: linear-gradient(135deg, var(--accent), #5b6bff); border: none; color: #fff; }
+  .btn .meta { display: block; font-size: 11px; font-weight: 400; opacity: .75; }
+  .release-note {
+    display: block; font-size: 12px; color: var(--text-dim); margin-top: 6px;
+    border: 1px dashed var(--border); border-radius: 10px; padding: 10px 14px; background: var(--surface);
+  }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin: 40px 0; }
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 20px;
+  }
+  .card h3 { font-size: 15px; margin-bottom: 8px; color: var(--accent-2); }
+  .card p { color: var(--text-dim); font-size: 14px; }
+  .pill {
+    display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+    background: rgba(52, 211, 153, .12); color: var(--good); border: 1px solid rgba(52, 211, 153, .3);
+  }
+  .pill.off { background: rgba(251, 191, 36, .1); color: var(--warn); border-color: rgba(251, 191, 36, .3); }
+  footer { margin-top: 56px; color: var(--text-dim); font-size: 13px; }
+  footer a { color: var(--accent-2); }
+  .status { font-size: 13px; color: var(--text-dim); margin-top: 14px; }
+  .status .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--good); margin-right: 6px; animation: pulse 2s infinite; }
+  @keyframes pulse { 50% { opacity: .35; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">R</div>
+    <div>
+      <div style="font-weight:700; font-size:18px;">Reforge</div>
+      <div class="tag">free · open source · local-first</div>
+    </div>
+  </header>
+
+  <h1>Give Windows a spa day.</h1>
+  <p class="lead">
+    Reforge turns your Windows desktop into <em>yours</em> — live animated wallpapers,
+    video &amp; GIF wallpapers, custom sound schemes, font replacement, a taskbar
+    redesigner, lock-screen designer, screensaver studio, RGB sync, desktop widgets,
+    a security center, and a full undo history that makes every change reversible.
+    No cloud account. No telemetry. Everything runs on your machine.
+  </p>
+
+  <div class="downloads" id="downloads">
+    <a class="btn primary" href="https://github.com/vasilescualex07-droid/Reforge/releases/latest" id="dl-installer">
+      <span>⬇ Download Reforge<span class="meta" id="dl-version">checking for the latest release…</span></span>
+    </a>
+    <a class="btn" href="https://github.com/vasilescualex07-droid/Reforge" target="_blank" rel="noopener">
+      <span>View source<span class="meta">GPL-3.0 on GitHub</span></span>
+    </a>
+  </div>
+  <div class="release-note" id="notes">Loading release notes…</div>
+
+  <div class="grid">
+    <div class="card"><h3>🖼 Live wallpapers</h3><p>Procedural animated scenes, imported video &amp; GIF wallpapers, per-monitor static images — all rendered behind your icons, all undoable.</p></div>
+    <div class="card"><h3>🔊 Full sound &amp; font control</h3><p>Import your own .wav into any system event, save schemes, preview fonts in real time, and swap the UI font — with an undo log the whole way.</p></div>
+    <div class="card"><h3>🛡 Security center</h3><p>Defender protection layers, threats, exclusions, controlled-folder access, and a temporary real-time-protection pause — with honest, plain-language status.</p></div>
+    <div class="card"><h3>📦 Shareable packs</h3><p>Capture your whole look — accent, wallpaper, video, sounds, fonts, taskbar, lock screen — into a .reforgepack file. Packs are data-only and security-scanned on import.</p></div>
+    <div class="card"><h3>↩️ Everything reversible</h3><p>Every change records a before-snapshot. One click in History reverts any single action or a whole pack — even a full-look snapshot restore.</p></div>
+    <div class="card"><h3>🔒 Local-first</h3><p>Zero telemetry, zero cloud accounts. Updates are opt-in. Reforge does its job on your machine and only your machine.</p></div>
+  </div>
+
+  <p>
+    <span class="pill">Windows 10 &amp; 11</span>
+    <span class="pill">Portable &amp; installer</span>
+    <span class="pill off">Not code-signed — “Unknown publisher” on first run is expected</span>
+  </p>
+
+  <footer>
+    Built with Tauri + React. Reversible, local, and honest — see the
+    <a href="https://github.com/vasilescualex07-droid/Reforge/blob/main/docs/ROADMAP.md">roadmap</a>.
+  </footer>
+</div>
+
+<script>
+// Live release feed: reads the latest GitHub release, keeps the download
+// button versioned, and shows real release notes. Degrades gracefully if the
+// API is unreachable or no release exists yet.
+const REPO = "vasilescualex07-droid/Reforge";
+const assetUrl = (name) => `https://github.com/${REPO}/releases/latest/download/${name}`;
+
+fetch(`https://api.github.com/repos/${REPO}/releases/latest`)
+  .then((r) => (r.ok ? r.json() : Promise.reject(new Error("no release yet"))))
+  .then((rel) => {
+    const v = rel.tag_name.replace(/^v/, "");
+    const setup = rel.assets.find((a) => a.name.endsWith("-setup.exe"));
+    const portable = rel.assets.find((a) => a.name.includes("portable"));
+    const dl = document.getElementById("dl-installer");
+    const dlv = document.getElementById("dl-version");
+    if (setup) dl.href = setup.browser_download_url;
+    dlv.textContent = `v${v} · ${setup ? formatSize(setup.size) : "installer"}${portable ? " · portable zip" : ""}`;
+    const notes = document.getElementById("notes");
+    if (rel.body && rel.body.trim()) {
+      notes.textContent = "What's new: " + rel.body.trim().split("\n")[0];
+    } else {
+      notes.textContent = `v${v} is the latest release.`;
+    }
+  })
+  .catch(() => {
+    document.getElementById("dl-version").textContent = "latest release";
+    document.getElementById("notes").textContent =
+      "No release published yet — watch the repo or run from source. The first build is coming.";
+  });
+
+function formatSize(bytes) {
+  const mb = bytes / (1024 * 1024);
+  return mb >= 1 ? `${mb.toFixed(0)} MB` : `${Math.round(bytes / 1024)} KB`;
+}
+</script>
+</body>
+</html>

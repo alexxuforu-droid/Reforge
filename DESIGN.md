@@ -3,7 +3,7 @@
 This file records the deliberate design choices that both governing standards
 require to be **stated, not assumed**. Standards in force:
 
-- **Standard A** — `STANDARDS (1).md` (development standards, workspace root)
+- **Standard A** — `docs/standards/STANDARDS.md` (development standards, workspace root)
 - **Standard B** — `no-slop-standard.md` (Windows 11 / Fluent detail spec)
 
 ## Palette

@@ -3,64 +3,48 @@
 This file records the delivery decisions the roadmap asked
 to be **documented, not just implemented**:
 
-1. Code signing + SmartScreen reality (S12.2)
+1. SmartScreen reality — **unsigned by decision** (S12.2)
 2. Splash → main handoff timing contract (S12.6)
 3. Exe size decision (S12.7)
+4. Telemetry — **fully local by decision** (P3-8)
 
 The updater (S12.1), installer UX (S12.4), versioned state + migrations (S12.5)
 and the GitHub Actions pipeline (S12.3) are implemented in code — see
 `src-tauri/src/updater.rs`, `src-tauri/src/migrations.rs`,
-`src-tauri/tauri.conf.json`, `scripts/make-dev-cert.ps1`,
-`scripts/sign-release.ps1`, `.github/workflows/release.yml`.
+`src-tauri/tauri.conf.json`, `.github/workflows/release.yml`.
 
 ---
 
-## 1. Code signing + SmartScreen (S12.2)
+## 1. SmartScreen — UNSIGNED BY DECISION (S12.2)
 
-**The honest position:** Reforge is unsigned today. Windows SmartScreen will show
-"Windows protected your PC — an unrecognized app is trying to run" on machines
-that have not already run the exe. This is expected and documented; the app
-never pretends otherwise.
+**Decision (owner, 2026-08-16): Reforge ships unsigned, permanently.** No
+code-signing certificate will be purchased and no third-party signing service
+(SignPath or otherwise) will be used. The old signing scripts
+(`scripts/sign-release.ps1`, `scripts/make-dev-cert.ps1`) and the CI signing
+step have been **removed** — this is a product decision, not a deferred task,
+and nothing in the repo should resurrect it without a deliberate reversal.
 
-**What clears SmartScreen (only one of these):**
+**What this means for users:** Windows SmartScreen shows "Windows protected
+your PC — an unrecognized app is trying to run" on machines that have not
+already run the exe. This is expected, documented in the README, and stated
+in-app (Settings → About) so nobody is surprised.
 
-- **Real OV/EV code-signing certificate** (the only full fix). Costs money, takes
-  days of identity verification, and the cert must be kept in hardware or CI
-  secrets. EV also earns immediate SmartScreen reputation; OV usually needs a
-  few thousand downloads to build reputation.
-- **Reputation over time.** Even unsigned, a binary that has been downloaded a
-  lot on real Windows machines builds SmartScreen reputation and the warning
-  fades. This is why `REFORGE_MANIFEST_URL` + the updater matter: shipping
-  frequent signed-less updates through one stable exe is better than scattering
-  unsigned one-offs.
+**How trust builds anyway:**
+
+- **SmartScreen reputation.** A binary that has been downloaded a lot on real
+  Windows machines builds download reputation and the warning fades over time.
+  This is exactly why the updater matters: shipping frequent updates through
+  one stable exe builds reputation far faster than scattering one-off
+  downloads across the internet.
 
 **What does NOT clear SmartScreen:**
 
-- Self-signed certs (dev only — see below).
+- Self-signed certs (dev only).
 - Adding the exe to your own "trusted publishers" store (only helps your machine).
 - Renaming, recompressing, or re-hashing the file (SmartScreen tracks content).
 
-### Dev / CI signing pipeline
-
-- `scripts/make-dev-cert.ps1` — generates a self-signed CodeSigningCert and
-  exports a PFX. **For local pipeline testing only.** Windows will still flag
-  it; it exists so the signing step of the release pipeline is exercised
-  end-to-end without spending money.
-- `scripts/sign-release.ps1` — signs `reforge.exe`, the NSIS `Reforge-Setup.exe`
-  and the MSI with signtool (SHA-256 + RFC3161 timestamp — timestamping is
-  mandatory or the signature is treated as untrusted once the cert expires).
-  Skips cleanly when `REFORGE_CERT_PFX` / `REFORGE_CERT_PASSWORD` are unset.
-- `.github/workflows/release.yml` — reads the same two env vars from GitHub
-  Secrets and runs the sign script in CI.
-
-**Production plan (when a real cert is bought):** put the PFX in GitHub Secrets,
-flip `REFORGE_CERT_PFX` on, and the release workflow signs everything. Nothing
-else in the pipeline changes — the updater's sha256 check is transport-agnostic.
-
-**Status (2026-08-16):** signing is on hold — releases ship **unsigned** for now
-and rely on the reputation path above. The PFX route stays drop-in, and the
-SignPath Foundation route (free for OSS; `signpath/github-action-submit-signing-request`)
-is equally drop-in if that changes. See `docs/RELEASE_PLAN.md`.
+The pipeline never pretends otherwise: installer, README, and in-app copy all
+say "unsigned by decision".
 
 ---
 
@@ -89,6 +73,26 @@ single-digit seconds on a cold start, and the main window must be interactive
 The splash spawns from within the main-thread restore callback, so it always
 appears after the persistent layers are back — never on a blank desktop, never
 after the user is already looking at the app.
+
+---
+
+## 4. Telemetry — FULLY LOCAL BY DECISION (P3-8)
+
+**Decision (owner, 2026-08-16): Reforge collects no telemetry. Permanently.**
+No anonymous usage counts, no error uploads, no analytics SDK, no crash
+reporting service. The local-first posture of the product is also its data
+posture: what happens on your machine stays on your machine.
+
+**What users get instead:** a **Diagnostics bundle** (Settings → About →
+Bundle) that writes build info + the startup-log tail into a plain `.txt` in
+Downloads. If something breaks, the user reads it or attaches it to a GitHub
+issue. Nothing is uploaded automatically — the file only leaves the machine
+if the user sends it.
+
+**What this means for the roadmap:** any future "metrics" idea (e.g. "how
+many people use video wallpapers") is answered with public release/download
+counts, not in-app tracking. Revisit only with a deliberate reversal like the
+signing decision above.
 
 ---
 
@@ -125,3 +129,16 @@ reuses cleanly). Until then the size is a deliberate trade for robustness.
 **Downside recorded:** 320 MB is a chunky download for the updater (S12.1). The
 pipeline mitigates this with delta-friendly versioning (each release is a full
 exe, sha256-verified, NSIS-installed silently) — accepted for now.
+
+---
+
+## 5. Packs 3.0 decision register (P-3, ROADMAP §P)
+
+**Recorded 2026-09-17.** One table, no ambiguity:
+
+| Item | Outcome | Rationale |
+|---|---|---|
+| Community gallery (P-1) | **Deferred** — build only if packs see real use after launch | Share codes already cover offline sharing; the read-only-repo design (`reforge-gallery` JSON index) stays valid and costs nothing to keep on the shelf. |
+| Theme trio generator (P-2) | **Deferred, cut freely** | Content-generation work; capture covers everything today. Reuse the desktop-mock preview canvas if ever built. |
+| MSIX packaging | **Declined** unless enterprise demand appears | NSIS per-user installer covers the audience; no Store requirement exists. |
+| Cloud backup (X-5) | **Declined** — local-first default stands | Profile + undo history stay on-device; encrypted user-owned-folder sync may be reconsidered only on explicit demand. |
