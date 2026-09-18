@@ -3,7 +3,7 @@ use crate::state::AppState;
 use crate::storage::{load_json, save_json};
 use crate::undo;
 use crate::wallpaper;
-use crate::wallpaper_engine::{EngineState, VideoWallpaper, WALLPAPER_WINDOW_LABEL};
+use crate::wallpaper_engine::{EngineState, VideoWallpaper};
 use serde_json::json;
 use std::path::PathBuf;
 use tauri::{Manager, State, WebviewUrl, WebviewWindowBuilder};
@@ -59,12 +59,112 @@ window.__setPaused = (p) => {{ if(p) v.pause(); else v.play().catch(()=>{{}}); }
     )
 }
 
+/// A monitor rect: (device name, x, y, w, h).
+pub type MonitorRect = (String, i32, i32, u32, u32);
+
+/// Pure lookup: the rect of the monitor named `want`, if present.
+/// Testable without a display stack.
+fn find_monitor_rect(rects: &[MonitorRect], want: &str) -> Option<(usize, i32, i32, u32, u32)> {
+    rects
+        .iter()
+        .enumerate()
+        .find(|(_, (name, ..))| name == want)
+        .map(|(i, (_, x, y, w, h))| (i, *x, *y, *w, *h))
+}
+
+/// Resolve where the video window goes: `Some((tauri_index, x, y, w, h))`
+/// pins it to that monitor; None falls back to the virtual screen (monitor
+/// unknown or unpinned).
+fn choose_placement(
+    app: &tauri::AppHandle,
+    monitor: &Option<String>,
+) -> Option<(usize, i32, i32, u32, u32)> {
+    let want = monitor.as_deref()?;
+    let monitors = app.available_monitors().ok()?;
+    let rects: Vec<MonitorRect> = monitors
+        .iter()
+        .map(|m| {
+            (
+                m.name().map(|s| s.to_string()).unwrap_or_default(),
+                m.position().x,
+                m.position().y,
+                m.size().width,
+                m.size().height,
+            )
+        })
+        .collect();
+    find_monitor_rect(&rects, want)
+}
+
+/// Video windows live under their own label prefix so they can never collide
+/// with the scene engine's single window (`reforge-wallpaper`).
+const VIDEO_WINDOW_PREFIX: &str = "reforge-video-wallpaper";
+
+fn video_window_label(index: usize) -> String {
+    format!("{VIDEO_WINDOW_PREFIX}-{index}")
+}
+
+fn is_video_window_label(label: &str) -> bool {
+    label.starts_with(VIDEO_WINDOW_PREFIX)
+}
+
+/// Close every video wallpaper window (any monitor placement).
+fn close_all_video_windows(app: &tauri::AppHandle) {
+    let labels: Vec<String> = app
+        .webview_windows()
+        .keys()
+        .filter(|l| is_video_window_label(l))
+        .cloned()
+        .collect();
+    for label in labels {
+        if let Some(win) = app.get_webview_window(&label) {
+            let _ = win.close();
+        }
+    }
+}
+
+/// Eval JS into every live video window (pause/resume across placements).
+pub fn eval_on_video_windows(app: &tauri::AppHandle, js: &str) {
+    let labels: Vec<String> = app
+        .webview_windows()
+        .keys()
+        .filter(|l| is_video_window_label(l))
+        .cloned()
+        .collect();
+    for label in labels {
+        if let Some(win) = app.get_webview_window(&label) {
+            let _ = win.eval(js);
+        }
+    }
+}
+
 fn open_video_window(
     app: &tauri::AppHandle,
     video: &VideoWallpaper,
     fade_in: bool,
 ) -> Result<(), AppError> {
-    let (x, y, w, h) = crate::wallpaper_engine::virtual_screen();
+    // M-1 — per-monitor placement: a pinned monitor opens one window at that
+    // monitor's bounds; unpinned keeps the classic single window over the
+    // whole virtual screen. Either way exactly ONE video window exists.
+    close_all_video_windows(app);
+    let (label, x, y, w, h) = match choose_placement(app, &video.monitor) {
+        Some((i, mx, my, mw, mh)) => (video_window_label(i), mx, my, mw as i32, mh as i32),
+        None => {
+            let (vx, vy, vw, vh) = crate::wallpaper_engine::virtual_screen();
+            (video_window_label(0), vx, vy, vw, vh)
+        }
+    };
+    open_video_window_at(app, video, fade_in, label, (x, y, w, h))
+}
+
+fn open_video_window_at(
+    app: &tauri::AppHandle,
+    video: &VideoWallpaper,
+    fade_in: bool,
+    label: String,
+    bounds: (i32, i32, i32, i32),
+) -> Result<(), AppError> {
+    let (x, y, w, h) = bounds;
     let html = video_html(video, fade_in);
     let dir = app
         .path()
@@ -80,7 +180,7 @@ fn open_video_window(
     // two WebView2 creations in flight on the main thread deadlock.
     let app = app.clone();
     crate::webview_gate::run(move || -> Result<(), AppError> {
-        let win = WebviewWindowBuilder::new(&app, WALLPAPER_WINDOW_LABEL, WebviewUrl::External(url))
+        let win = WebviewWindowBuilder::new(&app, label, WebviewUrl::External(url))
             .title("Reforge Video Wallpaper")
             .decorations(false)
             .resizable(false)
@@ -111,7 +211,11 @@ fn open_video_window(
                         0,
                         0,
                         0,
-                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOSENDCHANGING,
+                        SWP_NOMOVE
+                            | SWP_NOSIZE
+                            | SWP_NOACTIVATE
+                            | SWP_NOOWNERZORDER
+                            | SWP_NOSENDCHANGING,
                     );
                 }
             }
@@ -122,9 +226,7 @@ fn open_video_window(
 }
 
 fn close_video_window(app: &tauri::AppHandle) {
-    if let Some(win) = app.get_webview_window(WALLPAPER_WINDOW_LABEL) {
-        let _ = win.close();
-    }
+    close_all_video_windows(app);
 }
 
 // ---------------------------------------------------------------------------
@@ -147,17 +249,17 @@ pub fn list_video_wallpapers(state: State<'_, AppState>) -> Vec<VideoWallpaper> 
                 .file_stem()
                 .map(|s| s.to_string_lossy().to_string())
                 .unwrap_or_default();
-            let (w, h) = crate::transcode::probe_dimensions(&p)
-                .unwrap_or_else(|_| {
-                    let (_, _, sw, sh) = crate::wallpaper_engine::virtual_screen();
-                    (sw.max(0) as u32, sh.max(0) as u32)
-                });
+            let (w, h) = crate::transcode::probe_dimensions(&p).unwrap_or_else(|_| {
+                let (_, _, sw, sh) = crate::wallpaper_engine::virtual_screen();
+                (sw.max(0) as u32, sh.max(0) as u32)
+            });
             out.push(VideoWallpaper {
                 path: p.to_string_lossy().to_string(),
                 kind: kind.into(),
                 width: w,
                 height: h,
                 name,
+                monitor: None,
             });
         }
     }
@@ -170,6 +272,7 @@ pub async fn set_video_wallpaper(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
     source: String,
+    monitor: Option<String>,
 ) -> Result<EngineState, AppError> {
     use tauri::Emitter;
     let before = load_engine(&state);
@@ -190,8 +293,10 @@ pub async fn set_video_wallpaper(
     let app2 = app.clone();
     let import = tauri::async_runtime::spawn_blocking(move || {
         let mut last = std::time::Instant::now();
-        let result =
-            crate::transcode::import_media_p(&src, &out_dir, &mut |secs| {
+        let result = crate::transcode::import_media_p(
+            &src,
+            &out_dir,
+            &mut |secs| {
                 if last.elapsed().as_millis() >= 250 {
                     last = std::time::Instant::now();
                     let _ = app2.emit(
@@ -199,7 +304,9 @@ pub async fn set_video_wallpaper(
                         json!({ "phase": "transcoding", "seconds": secs }),
                     );
                 }
-            }, preset);
+            },
+            preset,
+        );
         let _ = app2.emit("transcode-progress", json!({ "phase": "done" }));
         result
     })
@@ -217,6 +324,8 @@ pub async fn set_video_wallpaper(
         width: import.width,
         height: import.height,
         name: name.clone(),
+        // M-1 — empty string from the UI means "all monitors"
+        monitor: monitor.filter(|m| !m.is_empty()),
     };
     // E4.7 — switching to a video fades it in over the previous wallpaper.
     close_video_window(&app);
@@ -290,4 +399,54 @@ pub fn start_video(app: &tauri::AppHandle, video: &VideoWallpaper) -> Result<(),
     close_video_window(app);
     open_video_window(app, video, false)?;
     Ok(())
+}
+
+#[tauri::command]
+pub fn set_video_paused(app: tauri::AppHandle, paused: bool) -> Result<(), AppError> {
+    // The video HTML defines window.__setPaused — pause/resume without
+    // restarting the window or losing position. Applies across every
+    // monitor placement.
+    eval_on_video_windows(
+        &app,
+        &format!("window.__setPaused && window.__setPaused({})", paused),
+    );
+    Ok(())
+}
+
+#[cfg(test)]
+mod m1_tests {
+    use super::*;
+
+    fn rects() -> Vec<MonitorRect> {
+        vec![
+            ("\\\\.\\DISPLAY1".into(), 0, 0, 1920, 1080),
+            ("\\\\.\\DISPLAY2".into(), 1920, 0, 2560, 1440),
+        ]
+    }
+
+    #[test]
+    fn finds_the_pinned_monitor_rect_and_index() {
+        let hit = find_monitor_rect(&rects(), "\\\\.\\DISPLAY2").expect("display2 found");
+        assert_eq!(hit, (1, 1920, 0, 2560, 1440));
+    }
+
+    #[test]
+    fn unknown_monitor_falls_back_to_none() {
+        assert!(find_monitor_rect(&rects(), "\\\\.\\DISPLAY9").is_none());
+        assert!(find_monitor_rect(&rects(), "").is_none());
+    }
+
+    #[test]
+    fn empty_monitor_list_is_none_not_panic() {
+        let none: Vec<MonitorRect> = Vec::new();
+        assert!(find_monitor_rect(&none, "\\\\.\\DISPLAY1").is_none());
+    }
+
+    #[test]
+    fn video_labels_are_prefixed_for_filtering() {
+        assert!(is_video_window_label(&video_window_label(0)));
+        assert!(is_video_window_label(&video_window_label(3)));
+        // the scene engine's window must never match
+        assert!(!is_video_window_label("reforge-wallpaper"));
+    }
 }

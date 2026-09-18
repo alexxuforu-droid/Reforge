@@ -522,6 +522,12 @@ pub struct VideoWallpaper {
     pub width: u32,
     pub height: u32,
     pub name: String,
+    /// Monitor this video is pinned to (Windows device name, e.g.
+    /// "\\.\DISPLAY2" — matches tauri's Monitor::name and get_display_info
+    /// ids). None = span every monitor with one window over the virtual
+    /// screen. Serde-defaulted so pre-M1 engine files/undo payloads load.
+    #[serde(default)]
+    pub monitor: Option<String>,
 }
 
 pub(crate) fn load_engine(state: &AppState) -> EngineState {
@@ -877,7 +883,10 @@ mod tests {
     #[test]
     fn scene_html_embeds_config_json() {
         let html = scene_html(&default_scene());
-        assert!(html.contains("\"kind\":\"aurora\""), "config JSON must be embedded");
+        assert!(
+            html.contains("\"kind\":\"aurora\""),
+            "config JSON must be embedded"
+        );
         assert!(html.contains("<canvas id=\"c\"></canvas>"));
     }
 
@@ -887,7 +896,9 @@ mod tests {
     fn scene_html_freezes_under_reduced_motion() {
         let html = scene_html(&default_scene());
         assert!(
-            html.contains("const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;"),
+            html.contains(
+                "const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;"
+            ),
             "the scene must read the OS reduced-motion setting"
         );
         assert!(
@@ -906,11 +917,26 @@ mod tests {
         from.kind = "matrix".into();
         let html = scene_html_transition(&from, &to);
         assert!(html.contains("<canvas id=\"c0\">"), "old scene on c0");
-        assert!(html.contains("<canvas id=\"c1\" style=\"opacity:0\">"), "new scene fades in on c1");
-        assert!(html.contains("getElementById('c0')"), "old scene script targets c0");
-        assert!(html.contains("getElementById('c1')"), "new scene script targets c1");
-        assert!(html.contains("\"kind\":\"matrix\""), "old scene cfg embedded");
-        assert!(html.contains("\"kind\":\"aurora\""), "new scene cfg embedded");
+        assert!(
+            html.contains("<canvas id=\"c1\" style=\"opacity:0\">"),
+            "new scene fades in on c1"
+        );
+        assert!(
+            html.contains("getElementById('c0')"),
+            "old scene script targets c0"
+        );
+        assert!(
+            html.contains("getElementById('c1')"),
+            "new scene script targets c1"
+        );
+        assert!(
+            html.contains("\"kind\":\"matrix\""),
+            "old scene cfg embedded"
+        );
+        assert!(
+            html.contains("\"kind\":\"aurora\""),
+            "new scene cfg embedded"
+        );
     }
 
     #[test]
@@ -1094,10 +1120,10 @@ pub fn scene_html_transition(from: &SceneConfig, to: &SceneConfig) -> String {
         let e = html.find("</script>").unwrap_or(html.len());
         html[s..e].to_string()
     }
-    let from_script = script_body(&scene_html(from))
-        .replace("getElementById('c')", "getElementById('c0')");
-    let to_script = script_body(&scene_html(to))
-        .replace("getElementById('c')", "getElementById('c1')");
+    let from_script =
+        script_body(&scene_html(from)).replace("getElementById('c')", "getElementById('c0')");
+    let to_script =
+        script_body(&scene_html(to)).replace("getElementById('c')", "getElementById('c1')");
     format!(
         r#"<!DOCTYPE html><html><head><meta charset="utf-8"><style>
 html,body{{margin:0;padding:0;overflow:hidden;background:#0b1026;width:100%;height:100%}}
@@ -1147,21 +1173,22 @@ pub(crate) fn open_window(
     // creations in flight deadlock. The gate serializes them.
     let app = app.clone();
     let result = crate::webview_gate::run(move || -> Result<(), AppError> {
-        let win = WebviewWindowBuilder::new(&app, WALLPAPER_WINDOW_LABEL, WebviewUrl::External(url))
-            .title("Reforge Wallpaper")
-            .decorations(false)
-            .resizable(false)
-            .maximizable(false)
-            .minimizable(false)
-            .closable(true)
-            .skip_taskbar(true)
-            .shadow(false)
-            .focused(false)
-            .always_on_bottom(true)
-            .inner_size(w as f64, h as f64)
-            .position(x as f64, y as f64)
-            .build()
-            .map_err(|e| AppError::Command(format!("wallpaper window: {}", e)))?;
+        let win =
+            WebviewWindowBuilder::new(&app, WALLPAPER_WINDOW_LABEL, WebviewUrl::External(url))
+                .title("Reforge Wallpaper")
+                .decorations(false)
+                .resizable(false)
+                .maximizable(false)
+                .minimizable(false)
+                .closable(true)
+                .skip_taskbar(true)
+                .shadow(false)
+                .focused(false)
+                .always_on_bottom(true)
+                .inner_size(w as f64, h as f64)
+                .position(x as f64, y as f64)
+                .build()
+                .map_err(|e| AppError::Command(format!("wallpaper window: {}", e)))?;
 
         if let Ok(hwnd) = win.hwnd() {
             // tauri's HWND comes from its own windows crate version; convert to ours
@@ -1179,7 +1206,11 @@ pub(crate) fn open_window(
                         0,
                         0,
                         0,
-                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOSENDCHANGING,
+                        SWP_NOMOVE
+                            | SWP_NOSIZE
+                            | SWP_NOACTIVATE
+                            | SWP_NOOWNERZORDER
+                            | SWP_NOSENDCHANGING,
                     );
                 }
             }
@@ -1202,13 +1233,21 @@ fn close_window(app: &tauri::AppHandle) {
 // Battery-saver / fullscreen monitor
 // ---------------------------------------------------------------------------
 
-fn battery_saver_on() -> bool {
+/// P3-11 — battery etiquette: true when Windows battery saver is on OR the
+/// system is on battery (ACLineStatus == 0) at or below 25% charge. The flag
+/// check alone isn't enough — Windows only auto-enables the saver if the user
+/// hasn't turned the auto-threshold off, so a hard low-battery pause protects
+/// the last charge regardless. (BatteryLifePercent is 255 when unknown.)
+pub(crate) fn battery_saver_on() -> bool {
     unsafe {
         use windows::Win32::System::Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS};
         let mut st: SYSTEM_POWER_STATUS = std::mem::zeroed();
         if GetSystemPowerStatus(&mut st).is_ok() {
             // BATTERY_SAVER_MODE_ON = 0x8
-            st.SystemStatusFlag & 0x8 != 0
+            if st.SystemStatusFlag & 0x8 != 0 {
+                return true;
+            }
+            st.ACLineStatus == 0 && st.BatteryLifePercent <= 25
         } else {
             false
         }
@@ -1319,7 +1358,11 @@ pub async fn set_animated_wallpaper(
     };
     // E4.7 — switching scene→scene crossfades (2s, reduced-motion aware) by
     // rendering the old scene deterministically on c0 while the new fades in.
-    let transition_from = if before.active { before.scene.as_ref() } else { None };
+    let transition_from = if before.active {
+        before.scene.as_ref()
+    } else {
+        None
+    };
     close_window(&app);
     open_window(&app, &scene, transition_from)?;
     let eng = EngineState {
@@ -1476,6 +1519,7 @@ mod s4_tests {
                 width: 1920,
                 height: 1080,
                 name: "aurora_loop".into(),
+                monitor: Some("\\\\.\\DISPLAY2".into()),
             }),
             static_wallpaper: "C:\\Users\\you\\Pictures\\fallback.jpg".into(),
         };
@@ -1518,6 +1562,9 @@ mod s4_tests {
         let t = TestDir::new();
         std::fs::write(engine_path(&t.state()), "{ not valid json !!").unwrap();
         let e = load_engine(&t.state());
-        assert!(!e.active, "corrupt file must degrade to the default, not panic");
+        assert!(
+            !e.active,
+            "corrupt file must degrade to the default, not panic"
+        );
     }
 }

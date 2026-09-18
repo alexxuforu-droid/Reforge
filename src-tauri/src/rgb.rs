@@ -31,7 +31,39 @@ const REQUEST_CONTROLLER_COUNT: u32 = 0;
 const REQUEST_CONTROLLER_DATA: u32 = 1;
 const REQUEST_CONTROLLER_COLORS: u32 = 2;
 const REQUEST_UPDATE_LEDS: u32 = 3;
+const REQUEST_UPDATE_ZONE_LEDS: u32 = 4;
 const REQUEST_UPDATE_MODE: u32 = 5;
+
+// ---------------------------------------------------------------------------
+// Session tracking (restore-on-exit)
+//
+// When Reforge writes static colors to a device it records the device index
+// here. On app exit every touched device gets its OpenRGB *active mode*
+// re-applied — the device's own lighting profile takes over again, exactly as
+// if Reforge had never run. Untouched devices are never contacted.
+// ---------------------------------------------------------------------------
+
+/// Managed Tauri state: device indices Reforge modified this session.
+#[derive(Default)]
+pub struct RgbSession {
+    touched: std::sync::Mutex<std::collections::HashSet<u32>>,
+}
+
+impl RgbSession {
+    pub fn record_touched(&self, device_index: u32) {
+        if let Ok(mut set) = self.touched.lock() {
+            set.insert(device_index);
+        }
+    }
+
+    /// Drain the set (exit path owns it afterwards).
+    fn drain_touched(&self) -> Vec<u32> {
+        match self.touched.lock() {
+            Ok(mut set) => std::mem::take(&mut *set).into_iter().collect(),
+            Err(_) => Vec::new(),
+        }
+    }
+}
 
 fn connect() -> Result<TcpStream, AppError> {
     let addr = "127.0.0.1:6742"
@@ -143,6 +175,61 @@ fn read_u16_be(data: &[u8], offset: &mut usize) -> u16 {
     v
 }
 
+/// Parse the zone list out of full controller data (skips header + modes).
+fn parse_zones(data: &[u8]) -> Vec<RGBZone> {
+    let mut off = 0;
+    let _name = read_cstring(data, &mut off);
+    let _kind = read_u32_be(data, &mut off);
+    let _loc = read_cstring(data, &mut off);
+    let _serial = read_cstring(data, &mut off);
+    let _ver = read_cstring(data, &mut off);
+    let _vendor = read_cstring(data, &mut off);
+    let _active_mode = read_u16_be(data, &mut off);
+    let num_modes = read_u16_be(data, &mut off);
+    for _ in 0..num_modes {
+        let _mode_name = read_cstring(data, &mut off);
+        let _mode_val = read_u32_be(data, &mut off);
+        let _mode_flags = read_u32_be(data, &mut off);
+        let _speed_min = read_u16_be(data, &mut off);
+        let _speed_max = read_u16_be(data, &mut off);
+        let _speed = read_u16_be(data, &mut off);
+        let _color_mode = read_u32_be(data, &mut off);
+        let num_colors = read_u16_be(data, &mut off);
+        for _ in 0..num_colors {
+            off = off.saturating_add(3);
+        }
+        if off + 2 <= data.len() {
+            let num_custom = read_u16_be(data, &mut off);
+            for _ in 0..num_custom {
+                off = off.saturating_add(3);
+            }
+        }
+    }
+    let num_zones = read_u16_be(data, &mut off);
+    let mut zones = Vec::new();
+    for _ in 0..num_zones {
+        let zone_name = read_cstring(data, &mut off);
+        let _zone_type = read_u32_be(data, &mut off);
+        let _leds_min = read_u16_be(data, &mut off);
+        let _leds_max = read_u16_be(data, &mut off);
+        let leds_count = read_u16_be(data, &mut off);
+        let _matrix_h = read_u16_be(data, &mut off);
+        let _matrix_w = read_u16_be(data, &mut off);
+        let _zone_flags = read_u32_be(data, &mut off);
+        zones.push(RGBZone {
+            name: zone_name,
+            leds_count,
+        });
+    }
+    zones
+}
+
+#[derive(Serialize, Clone)]
+pub struct RGBZone {
+    pub name: String,
+    pub leds_count: u16,
+}
+
 #[derive(Serialize, Clone)]
 pub struct RGBDevice {
     pub index: u32,
@@ -152,6 +239,7 @@ pub struct RGBDevice {
     pub num_modes: u16,
     pub active_mode: u16,
     pub colors: Vec<[u8; 3]>,
+    pub zones: Vec<RGBZone>,
 }
 
 #[derive(Serialize, Clone)]
@@ -243,17 +331,22 @@ pub fn rgb_detect() -> RGBState {
                 }
             }
         }
-        // zones
+        // zones (kept inline so `off` stays aligned for the LED list that follows)
         let num_zones = read_u16_be(&data, &mut off);
+        let mut zones = Vec::new();
         for _ in 0..num_zones {
-            let _zone_name = read_cstring(&data, &mut off);
+            let zone_name = read_cstring(&data, &mut off);
             let _zone_type = read_u32_be(&data, &mut off);
             let _leds_min = read_u16_be(&data, &mut off);
             let _leds_max = read_u16_be(&data, &mut off);
-            let _leds_count = read_u16_be(&data, &mut off);
+            let leds_count = read_u16_be(&data, &mut off);
             let _matrix_h = read_u16_be(&data, &mut off);
             let _matrix_w = read_u16_be(&data, &mut off);
             let _zone_flags = read_u32_be(&data, &mut off);
+            zones.push(RGBZone {
+                name: zone_name,
+                leds_count,
+            });
         }
         let num_leds = read_u16_be(&data, &mut off);
         for _ in 0..num_leds {
@@ -277,6 +370,7 @@ pub fn rgb_detect() -> RGBState {
             num_modes,
             active_mode,
             colors,
+            zones,
         });
     }
     let note = if devices.is_empty() {
@@ -294,6 +388,7 @@ pub fn rgb_detect() -> RGBState {
 #[tauri::command]
 pub fn rgb_set_static(
     state: State<'_, AppState>,
+    session: State<'_, RgbSession>,
     device_index: u32,
     hex: String,
 ) -> Result<String, AppError> {
@@ -329,6 +424,7 @@ pub fn rgb_set_static(
     }
     send_packet(&mut stream, device_index, REQUEST_UPDATE_LEDS, &payload)?;
     let _ = read_response(&mut stream);
+    session.record_touched(device_index);
 
     undo::log_entry(
         &state,
@@ -344,6 +440,60 @@ pub fn rgb_set_static(
     Ok(format!("Set device {} to #{}", device_index, hex))
 }
 
+/// Walk a controller-data payload and return the active mode's raw struct
+/// (the bytes OpenRGB expects back in a REQUEST_UPDATE_MODE packet).
+/// Returns None (never panics) on truncated or malformed data.
+fn extract_active_mode_data(data: &[u8]) -> Option<Vec<u8>> {
+    fn u32be(d: &[u8], off: usize) -> Option<u32> {
+        d.get(off..off + 4)
+            .map(|b| u32::from_be_bytes([b[0], b[1], b[2], b[3]]))
+    }
+    fn u16be(d: &[u8], off: usize) -> Option<u16> {
+        d.get(off..off + 2)
+            .map(|b| u16::from_be_bytes([b[0], b[1]]))
+    }
+
+    let mut off = 0usize;
+    let _name = read_cstring(data, &mut off);
+    let _kind = u32be(data, off)?;
+    off += 4;
+    for _ in 0..4 {
+        // loc, serial, ver, vendor
+        let _ = read_cstring(data, &mut off);
+    }
+    let active_mode = u16be(data, off)?;
+    off += 2;
+    let num_modes = u16be(data, off)?;
+    off += 2;
+    for mi in 0..num_modes {
+        let mode_start = off;
+        let _mode_name = read_cstring(data, &mut off);
+        let _mode_val = u32be(data, off)?;
+        off += 4;
+        let _mode_flags = u32be(data, off)?;
+        off += 4;
+        // speed_min, speed_max, speed
+        for _ in 0..3 {
+            let _ = u16be(data, off)?;
+            off += 2;
+        }
+        let _color_mode = u32be(data, off)?;
+        off += 4;
+        let num_colors = u16be(data, off)?;
+        off += 2;
+        off = off.saturating_add(3usize.saturating_mul(num_colors as usize));
+        if off + 2 <= data.len() {
+            let num_custom = u16be(data, off)?;
+            off += 2;
+            off = off.saturating_add(3usize.saturating_mul(num_custom as usize));
+        }
+        if mi == active_mode && off <= data.len() {
+            return Some(data[mode_start..off].to_vec());
+        }
+    }
+    None
+}
+
 #[tauri::command]
 pub fn rgb_restore_current_mode(
     state: State<'_, AppState>,
@@ -353,48 +503,10 @@ pub fn rgb_restore_current_mode(
     let mut stream = connect()?;
     send_packet(&mut stream, device_index, REQUEST_CONTROLLER_DATA, &[])?;
     let data = read_response(&mut stream)?;
-    // parse mode data again to find the active mode's struct
-    let mut off = 0;
-    let _name = read_cstring(&data, &mut off);
-    let _kind = read_u32_be(&data, &mut off);
-    let _loc = read_cstring(&data, &mut off);
-    let _serial = read_cstring(&data, &mut off);
-    let _ver = read_cstring(&data, &mut off);
-    let _vendor = read_cstring(&data, &mut off);
-    let active_mode = read_u16_be(&data, &mut off);
-    let num_modes = read_u16_be(&data, &mut off);
-    // find the active mode's data in the modes array
-    let mut mode_data = Vec::new();
-    for mi in 0..num_modes {
-        let mode_start = off;
-        let _mode_name = read_cstring(&data, &mut off);
-        let _mode_val = read_u32_be(&data, &mut off);
-        let _mode_flags = read_u32_be(&data, &mut off);
-        let _speed_min = read_u16_be(&data, &mut off);
-        let _speed_max = read_u16_be(&data, &mut off);
-        let _speed = read_u16_be(&data, &mut off);
-        let _color_mode = read_u32_be(&data, &mut off);
-        let num_colors = read_u16_be(&data, &mut off);
-        for _ in 0..num_colors {
-            off = off.saturating_add(3);
-        }
-        if off + 2 <= data.len() {
-            let num_custom = read_u16_be(&data, &mut off);
-            for _ in 0..num_custom {
-                off = off.saturating_add(3);
-            }
-        }
-        if mi == active_mode {
-            mode_data = data[mode_start..off].to_vec();
-        }
-    }
-    if mode_data.is_empty() {
-        return Err(AppError::Command(
-            "Could not find the active mode's data.".into(),
-        ));
-    }
+    let mode_data = extract_active_mode_data(&data)
+        .ok_or_else(|| AppError::Command("Could not find the active mode's data.".into()))?;
     send_packet(&mut stream, device_index, REQUEST_UPDATE_MODE, &mode_data)?;
-    let _ = read_response(&mut stream)?;
+    let _ = read_response(&mut stream);
 
     undo::log_entry(
         &state,
@@ -406,6 +518,88 @@ pub fn rgb_restore_current_mode(
     Ok(format!(
         "Device {} restored to its current mode.",
         device_index
+    ))
+}
+
+#[tauri::command]
+pub fn rgb_set_zone_static(
+    state: State<'_, AppState>,
+    session: State<'_, RgbSession>,
+    device_index: u32,
+    zone_index: u32,
+    hex: String,
+) -> Result<String, AppError> {
+    let hex = hex.trim_start_matches('#');
+    let r = u8::from_str_radix(&hex[0..2], 16).map_err(|_| "Invalid hex color".to_string())?;
+    let g = u8::from_str_radix(&hex[2..4], 16).map_err(|_| "Invalid hex color".to_string())?;
+    let b = u8::from_str_radix(&hex[4..6], 16).map_err(|_| "Invalid hex color".to_string())?;
+
+    // snapshot current colors first (for undo)
+    let mut stream = connect()?;
+    send_packet(&mut stream, device_index, REQUEST_CONTROLLER_COLORS, &[])?;
+    let before_data = read_response(&mut stream)?;
+    let num_colors = before_data.len() / 4;
+    let mut before_colors = Vec::new();
+    for i in 0..num_colors {
+        if i * 4 + 3 < before_data.len() {
+            before_colors.push([
+                before_data[i * 4],
+                before_data[i * 4 + 1],
+                before_data[i * 4 + 2],
+            ]);
+        }
+    }
+
+    // find the zone's LED count
+    send_packet(&mut stream, device_index, REQUEST_CONTROLLER_DATA, &[])?;
+    let data = read_response(&mut stream)?;
+    let zones = parse_zones(&data);
+    let zone = zones.get(zone_index as usize).ok_or_else(|| {
+        AppError::Command(format!(
+            "Zone {} not found on device {}.",
+            zone_index, device_index
+        ))
+    })?;
+    let n = zone.leds_count as usize;
+    if n == 0 {
+        return Err(AppError::Command("Zone has no LEDs.".into()));
+    }
+
+    // REQUEST_UPDATE_ZONE_LEDS: zone_index (u32 LE) + r,g,b per zone LED
+    let mut payload = Vec::with_capacity(4 + n * 3);
+    payload.extend_from_slice(&zone_index.to_le_bytes());
+    for _ in 0..n {
+        payload.push(r);
+        payload.push(g);
+        payload.push(b);
+    }
+    send_packet(
+        &mut stream,
+        device_index,
+        REQUEST_UPDATE_ZONE_LEDS,
+        &payload,
+    )?;
+    let _ = read_response(&mut stream);
+    session.record_touched(device_index);
+
+    undo::log_entry(
+        &state,
+        "rgb_color",
+        format!(
+            "RGB device {} zone '{}' → #{}",
+            device_index, zone.name, hex
+        ),
+        json!({
+            "device_index": device_index,
+            "before_colors": before_colors,
+            "after": hex,
+            "zone": zone_index,
+        }),
+        true,
+    )?;
+    Ok(format!(
+        "Device {} zone '{}' → #{}",
+        device_index, zone.name, hex
     ))
 }
 
@@ -423,4 +617,90 @@ pub fn restore_colors(device_index: u32, before_colors: &[[u8; 3]]) -> Result<()
     send_packet(&mut stream, device_index, REQUEST_UPDATE_LEDS, &payload)?;
     let _ = read_response(&mut stream);
     Ok(())
+}
+
+// restore-on-exit ----------------------------------------------------------------
+
+/// Best-effort "give the devices their own lighting back" on app exit.
+///
+/// For every device Reforge touched this session, re-apply its OpenRGB
+/// active mode (idempotent if the user's mode was already static). Never
+/// panics, never blocks longer than the socket timeouts, logs what it did.
+/// Called from the `RunEvent::Exit` handler in `lib.rs`.
+pub fn rgb_restore_session_on_exit(app: &tauri::AppHandle) {
+    use tauri::Manager;
+    let session = app.state::<RgbSession>();
+    let touched = session.drain_touched();
+    if touched.is_empty() {
+        return; // nothing we changed — don't even contact OpenRGB
+    }
+    for device_index in touched {
+        let result = (|| -> Result<(), AppError> {
+            let mut stream = connect()?;
+            send_packet(&mut stream, device_index, REQUEST_CONTROLLER_DATA, &[])?;
+            let data = read_response(&mut stream)?;
+            let mode_data = extract_active_mode_data(&data)
+                .ok_or_else(|| AppError::Command("active mode not found".into()))?;
+            send_packet(&mut stream, device_index, REQUEST_UPDATE_MODE, &mode_data)?;
+            let _ = read_response(&mut stream);
+            Ok(())
+        })();
+        match result {
+            Ok(()) => tracing::info!("rgb exit: device {device_index} restored to its active mode"),
+            Err(e) => tracing::warn!("rgb exit: device {device_index} not restored: {e}"),
+        }
+    }
+}
+
+#[cfg(test)]
+mod exit_tests {
+    use super::*;
+
+    #[test]
+    fn extracts_the_active_mode_and_no_other() {
+        let mut d = Vec::new();
+        d.extend_from_slice(b"name\0");
+        d.extend_from_slice(&1u32.to_be_bytes()); // device kind
+        for s in ["loc", "serial", "ver", "vendor"] {
+            d.extend_from_slice(s.as_bytes());
+            d.push(0);
+        }
+        d.extend_from_slice(&2u16.to_be_bytes()); // active mode = 2
+        d.extend_from_slice(&3u16.to_be_bytes()); // 3 modes total
+        for mi in 0..3u16 {
+            d.extend_from_slice(format!("mode{mi}\0").as_bytes());
+            d.extend_from_slice(&0u32.to_be_bytes()); // value
+            d.extend_from_slice(&0u32.to_be_bytes()); // flags
+            d.extend_from_slice(&0u16.to_be_bytes()); // speed_min
+            d.extend_from_slice(&0u16.to_be_bytes()); // speed_max
+            d.extend_from_slice(&0u16.to_be_bytes()); // speed
+            d.extend_from_slice(&0u32.to_be_bytes()); // color_mode
+            d.extend_from_slice(&1u16.to_be_bytes()); // 1 mode color
+            d.extend_from_slice(&[0xaa, 0xbb, 0xcc]); // color bytes
+            d.extend_from_slice(&0u16.to_be_bytes()); // 0 custom colors
+        }
+        let extracted = extract_active_mode_data(&d).expect("active mode found");
+        assert!(extracted.starts_with(b"mode2\0"));
+        assert!(!extracted.starts_with(b"mode1\0"));
+        // full struct: name+cstr(6) + value(4) + flags(4) + speed×3(6)
+        //              + color_mode(4) + num_colors(2) + 3 + num_custom(2)
+        assert_eq!(extracted.len(), 6 + 4 + 4 + 6 + 4 + 2 + 3 + 2);
+    }
+
+    #[test]
+    fn garbage_payload_returns_none_without_panicking() {
+        assert_eq!(extract_active_mode_data(&[]), None);
+        assert_eq!(extract_active_mode_data(&[0xff; 8]), None);
+    }
+
+    #[test]
+    fn session_records_and_drains() {
+        let s = RgbSession::default();
+        s.record_touched(1);
+        s.record_touched(3);
+        s.record_touched(1); // set semantics — no duplicate
+        let drained = s.drain_touched();
+        assert_eq!(drained.len(), 2);
+        assert!(s.drain_touched().is_empty());
+    }
 }

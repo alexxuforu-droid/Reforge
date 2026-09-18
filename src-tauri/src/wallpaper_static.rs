@@ -196,12 +196,23 @@ pub fn next_rotation_after(cfg: &SlideshowConfig, now: u64) -> u64 {
 const FAVOR_WEIGHT: usize = 3;
 
 const NIGHT_KEYS: &[&str] = &[
-    "night", "moon", "dark", "dusk", "midnight", "stars", "starry", "galaxy", "nebula",
-    "space", "aurora", "north", "twilight", "lunar", "cosmic",
+    "night", "moon", "dark", "dusk", "midnight", "stars", "starry", "galaxy", "nebula", "space",
+    "aurora", "north", "twilight", "lunar", "cosmic",
 ];
 const DAY_KEYS: &[&str] = &[
-    "day", "sun", "sunrise", "sunset", "light", "morning", "bright", "dawn", "noon",
-    "sky", "daylight", "golden", "afternoon",
+    "day",
+    "sun",
+    "sunrise",
+    "sunset",
+    "light",
+    "morning",
+    "bright",
+    "dawn",
+    "noon",
+    "sky",
+    "daylight",
+    "golden",
+    "afternoon",
 ];
 
 fn name_matches(path: &Path, keys: &[&str]) -> bool {
@@ -315,15 +326,15 @@ pub fn rotation_decision(
     }
     // no duplicate applies: a single-image folder has nothing new to show, so
     // don't re-apply the same wallpaper (and spam history) every interval
-    if pool.len() == 1
-        && cfg.last_applied.as_deref() == Some(pool[0].to_string_lossy().as_ref())
-    {
+    if pool.len() == 1 && cfg.last_applied.as_deref() == Some(pool[0].to_string_lossy().as_ref()) {
         return None;
     }
     let picked = if cfg.shuffle {
         let mut p = pick_shuffle(cfg, &pool)?;
         // shuffle can land on the current wallpaper — retry once for variety
-        if pool.len() > 1 && p.to_string_lossy().as_ref() == cfg.last_applied.as_deref().unwrap_or("") {
+        if pool.len() > 1
+            && p.to_string_lossy().as_ref() == cfg.last_applied.as_deref().unwrap_or("")
+        {
             p = pick_shuffle(cfg, &pool)?;
         }
         p
@@ -353,33 +364,28 @@ pub fn skip_slideshow(state: State<'_, AppState>) -> Result<String, AppError> {
             "No supported images (jpg/png/bmp/webp/gif) found in the slideshow folder".into(),
         ));
     }
-    if pool.len() == 1
-        && cfg.last_applied.as_deref() == Some(pool[0].to_string_lossy().as_ref())
-    {
+    if pool.len() == 1 && cfg.last_applied.as_deref() == Some(pool[0].to_string_lossy().as_ref()) {
         return Err(AppError::Command(
             "Only one image — nothing new to skip to".into(),
         ));
     }
     let picked = if cfg.shuffle {
-        let mut p = pick_shuffle(&cfg, &pool).ok_or_else(|| {
-            AppError::Command("Could not pick the next wallpaper".into())
-        })?;
+        let mut p = pick_shuffle(&cfg, &pool)
+            .ok_or_else(|| AppError::Command("Could not pick the next wallpaper".into()))?;
         if pool.len() > 1
             && p.to_string_lossy().as_ref() == cfg.last_applied.as_deref().unwrap_or("")
         {
             // shuffle can land on the current wallpaper — retry once
-            p = pick_shuffle(&cfg, &pool).ok_or_else(|| {
-                AppError::Command("No other image to skip to".into())
-            })?;
+            p = pick_shuffle(&cfg, &pool)
+                .ok_or_else(|| AppError::Command("No other image to skip to".into()))?;
             if p.to_string_lossy().as_ref() == cfg.last_applied.as_deref().unwrap_or("") {
                 return Err(AppError::Command("No other image to skip to".into()));
             }
         }
         p
     } else {
-        let (p, idx) = next_seq_pick(&cfg, &pool).ok_or_else(|| {
-            AppError::Command("Could not pick the next wallpaper".into())
-        })?;
+        let (p, idx) = next_seq_pick(&cfg, &pool)
+            .ok_or_else(|| AppError::Command("Could not pick the next wallpaper".into()))?;
         cfg.last_seq_index = Some(idx);
         p
     };
@@ -469,23 +475,47 @@ mod tests {
     fn not_due_or_paused_means_no_rotation() {
         let im = imgs(&["a.jpg", "b.jpg"]);
         let mut c = cfg(true, 30, None);
-        assert_eq!(rotation_decision(&mut c, &im, 999_999, 12 * 60, false), None); // not due
-        assert_eq!(rotation_decision(&mut c, &im, 2_000_000, 12 * 60, true), None); // paused
-        assert_eq!(rotation_decision(&mut cfg(false, 30, None), &im, 2_000_000, 12 * 60, false), None); // disabled
-        assert_eq!(rotation_decision(&mut c, &[], 2_000_000, 12 * 60, false), None); // empty folder
+        assert_eq!(
+            rotation_decision(&mut c, &im, 999_999, 12 * 60, false),
+            None
+        ); // not due
+        assert_eq!(
+            rotation_decision(&mut c, &im, 2_000_000, 12 * 60, true),
+            None
+        ); // paused
+        assert_eq!(
+            rotation_decision(&mut cfg(false, 30, None), &im, 2_000_000, 12 * 60, false),
+            None
+        ); // disabled
+        assert_eq!(
+            rotation_decision(&mut c, &[], 2_000_000, 12 * 60, false),
+            None
+        ); // empty folder
     }
 
     #[test]
     fn sequential_rotation_advances_and_wraps() {
         let im = imgs(&["a.jpg", "b.jpg", "c.jpg"]);
         let mut c = cfg(true, 30, None);
-        assert_eq!(s(&rotation_decision(&mut c, &im, 2_000_000, 12 * 60, false).unwrap()), "C:/Wallpapers/a.jpg");
+        assert_eq!(
+            s(&rotation_decision(&mut c, &im, 2_000_000, 12 * 60, false).unwrap()),
+            "C:/Wallpapers/a.jpg"
+        );
         c.last_applied = Some("C:/Wallpapers/a.jpg".into());
-        assert_eq!(s(&rotation_decision(&mut c, &im, 3_000_000, 12 * 60, false).unwrap()), "C:/Wallpapers/b.jpg");
+        assert_eq!(
+            s(&rotation_decision(&mut c, &im, 3_000_000, 12 * 60, false).unwrap()),
+            "C:/Wallpapers/b.jpg"
+        );
         c.last_applied = Some("C:/Wallpapers/b.jpg".into());
-        assert_eq!(s(&rotation_decision(&mut c, &im, 4_000_000, 12 * 60, false).unwrap()), "C:/Wallpapers/c.jpg");
+        assert_eq!(
+            s(&rotation_decision(&mut c, &im, 4_000_000, 12 * 60, false).unwrap()),
+            "C:/Wallpapers/c.jpg"
+        );
         c.last_applied = Some("C:/Wallpapers/c.jpg".into());
-        assert_eq!(s(&rotation_decision(&mut c, &im, 5_000_000, 12 * 60, false).unwrap()), "C:/Wallpapers/a.jpg");
+        assert_eq!(
+            s(&rotation_decision(&mut c, &im, 5_000_000, 12 * 60, false).unwrap()),
+            "C:/Wallpapers/a.jpg"
+        );
     }
 
     #[test]
@@ -493,10 +523,16 @@ mod tests {
         let im = imgs(&["only.jpg"]);
         // first rotation applies it
         let mut c = cfg(true, 30, None);
-        assert_eq!(s(&rotation_decision(&mut c, &im, 2_000_000, 12 * 60, false).unwrap()), "C:/Wallpapers/only.jpg");
+        assert_eq!(
+            s(&rotation_decision(&mut c, &im, 2_000_000, 12 * 60, false).unwrap()),
+            "C:/Wallpapers/only.jpg"
+        );
         // next rotation has nothing new — no duplicate apply, no history spam
         c.last_applied = Some("C:/Wallpapers/only.jpg".into());
-        assert_eq!(rotation_decision(&mut c, &im, 3_000_000, 12 * 60, false), None);
+        assert_eq!(
+            rotation_decision(&mut c, &im, 3_000_000, 12 * 60, false),
+            None
+        );
     }
 
     #[test]
@@ -528,13 +564,31 @@ mod tests {
         let im = imgs(&["a.jpg", "b.jpg", "c.jpg"]);
         // weighted sequence = [a, b, b, b, c] — b (the favorite) occupies 3
         // of the 5 slots, so over a cycle it comes around 3× more often
-        assert_eq!(s(&rotation_decision(&mut c, &im, 2_000_000, 12 * 60, false).unwrap()), "C:/Wallpapers/a.jpg");
-        assert_eq!(s(&rotation_decision(&mut c, &im, 3_000_000, 12 * 60, false).unwrap()), "C:/Wallpapers/b.jpg");
-        assert_eq!(s(&rotation_decision(&mut c, &im, 4_000_000, 12 * 60, false).unwrap()), "C:/Wallpapers/b.jpg");
-        assert_eq!(s(&rotation_decision(&mut c, &im, 5_000_000, 12 * 60, false).unwrap()), "C:/Wallpapers/b.jpg");
-        assert_eq!(s(&rotation_decision(&mut c, &im, 6_000_000, 12 * 60, false).unwrap()), "C:/Wallpapers/c.jpg");
+        assert_eq!(
+            s(&rotation_decision(&mut c, &im, 2_000_000, 12 * 60, false).unwrap()),
+            "C:/Wallpapers/a.jpg"
+        );
+        assert_eq!(
+            s(&rotation_decision(&mut c, &im, 3_000_000, 12 * 60, false).unwrap()),
+            "C:/Wallpapers/b.jpg"
+        );
+        assert_eq!(
+            s(&rotation_decision(&mut c, &im, 4_000_000, 12 * 60, false).unwrap()),
+            "C:/Wallpapers/b.jpg"
+        );
+        assert_eq!(
+            s(&rotation_decision(&mut c, &im, 5_000_000, 12 * 60, false).unwrap()),
+            "C:/Wallpapers/b.jpg"
+        );
+        assert_eq!(
+            s(&rotation_decision(&mut c, &im, 6_000_000, 12 * 60, false).unwrap()),
+            "C:/Wallpapers/c.jpg"
+        );
         // wraps back to the start of the weighted sequence, cursor resets
-        assert_eq!(s(&rotation_decision(&mut c, &im, 7_000_000, 12 * 60, false).unwrap()), "C:/Wallpapers/a.jpg");
+        assert_eq!(
+            s(&rotation_decision(&mut c, &im, 7_000_000, 12 * 60, false).unwrap()),
+            "C:/Wallpapers/a.jpg"
+        );
         assert_eq!(c.last_seq_index, Some(0));
     }
 
@@ -556,7 +610,8 @@ mod tests {
         let picked = rotation_decision(&mut c2, &im2, 2_000_000, 22 * 60, false).unwrap();
         assert!(im2.contains(&picked));
         // filter off → everything qualifies at any hour
-        let picked_off = rotation_decision(&mut cfg(true, 30, None), &im, 2_000_000, 22 * 60, false).unwrap();
+        let picked_off =
+            rotation_decision(&mut cfg(true, 30, None), &im, 2_000_000, 22 * 60, false).unwrap();
         assert_eq!(s(&picked_off), "C:/Wallpapers/mountain-day.jpg");
     }
 
@@ -565,9 +620,18 @@ mod tests {
         let im = imgs(&["moon.jpg", "sun.jpg"]);
         // 17:59 is day; 18:00 is night; 05:59 is night; 06:00 is day
         assert_eq!(filter_for_time(im.clone(), 17 * 60 + 59, true).len(), 1);
-        assert_eq!(s(&filter_for_time(im.clone(), 18 * 60, true)[0]), "C:/Wallpapers/moon.jpg");
-        assert_eq!(s(&filter_for_time(im.clone(), 5 * 60 + 59, true)[0]), "C:/Wallpapers/moon.jpg");
-        assert_eq!(s(&filter_for_time(im.clone(), 6 * 60, true)[0]), "C:/Wallpapers/sun.jpg");
+        assert_eq!(
+            s(&filter_for_time(im.clone(), 18 * 60, true)[0]),
+            "C:/Wallpapers/moon.jpg"
+        );
+        assert_eq!(
+            s(&filter_for_time(im.clone(), 5 * 60 + 59, true)[0]),
+            "C:/Wallpapers/moon.jpg"
+        );
+        assert_eq!(
+            s(&filter_for_time(im.clone(), 6 * 60, true)[0]),
+            "C:/Wallpapers/sun.jpg"
+        );
         // filter off passes everything through untouched
         assert_eq!(filter_for_time(im.clone(), 12 * 60, false).len(), 2);
     }

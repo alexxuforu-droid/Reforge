@@ -69,8 +69,8 @@ mod onboarding;
 mod organize;
 mod packs;
 mod palette;
-mod power;
 mod perf;
+mod power;
 mod productivity;
 mod profile;
 mod restore;
@@ -93,10 +93,10 @@ mod tuneup;
 mod undo;
 mod updater;
 mod wallpaper;
-mod webview_gate;
 mod wallpaper_engine;
 mod wallpaper_static;
 mod wallpaper_video;
+mod webview_gate;
 mod widgets;
 
 use state::AppState;
@@ -171,6 +171,8 @@ pub fn run() {
                 Err(e) => tracing::error!("state migration failed: {e}"),
             }
             app.manage(state_managed);
+            // RGB restore-on-exit: session tracking for touched devices (M-2)
+            app.manage(rgb::RgbSession::default());
             let handle = app.handle().clone();
             // F-B: Mica window material behind the content pane
             apply_mica(&handle);
@@ -259,8 +261,8 @@ pub fn run() {
             // thermals ride the same 2s pulse as CPU/RAM/disk)
             let stat_handle = handle.clone();
             std::thread::spawn(move || {
-                use sysinfo::System;
                 use std::time::Instant;
+                use sysinfo::System;
                 let mut sys = System::new_all();
                 let mut last_net: Option<(u64, u64)> = None;
                 let mut last = Instant::now();
@@ -313,6 +315,7 @@ pub fn run() {
             wallpaper_video::list_video_wallpapers,
             wallpaper_video::set_video_wallpaper,
             wallpaper_video::stop_video_wallpaper,
+            wallpaper_video::set_video_paused,
             // widgets
             widgets::list_widgets,
             widgets::create_widget,
@@ -377,6 +380,7 @@ pub fn run() {
             system::get_system_info,
             system::get_health_score,
             system::get_build_info,
+            system::bundle_diagnostics,
             // palette
             palette::extract_palette,
             // perf
@@ -501,6 +505,7 @@ pub fn run() {
             lockscreen::set_lock_screen_slideshow,
             lockscreen::set_lock_screen_spotlight,
             lockscreen::set_lock_screen_hide_apps,
+            lockscreen::read_image_data_url,
             // fonts
             fonts::list_installed_fonts,
             fonts::list_font_substitutions,
@@ -511,6 +516,7 @@ pub fn run() {
             rgb::rgb_detect,
             rgb::rgb_set_static,
             rgb::rgb_restore_current_mode,
+            rgb::rgb_set_zone_static,
             // splash
             splash::get_splash_config,
             splash::set_splash_config,
@@ -524,6 +530,8 @@ pub fn run() {
             marketplace::marketplace_apply_bundle,
             marketplace::marketplace_get_manifest,
             marketplace::marketplace_delete_bundle,
+            marketplace::marketplace_preview_asset,
+            marketplace::marketplace_import_components,
             // shell
             shell::shell_get_taskbar_state,
             shell::shell_get_taskbar_capabilities,
@@ -591,9 +599,17 @@ pub fn run() {
             screensaver::preview_screensaver,
             screensaver::dismiss_screensaver,
         ])
-        .run(tauri::generate_context!())
+        .build(tauri::generate_context!())
         // tauri's canonical main entry — the app can't continue without it
-        .expect("error while running tauri application");
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            if let tauri::RunEvent::Exit = event {
+                // M-2: give RGB devices their own lighting back before the
+                // process ends. Best-effort; no-ops instantly when nothing
+                // was touched this session.
+                rgb::rgb_restore_session_on_exit(app_handle);
+            }
+        });
 }
 
 /// The OS launched us as the screensaver (/s arg from the idle timeout).
@@ -615,9 +631,8 @@ fn run_screensaver_app() {
             screensaver::run_screensaver_mode(app.handle());
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
-            screensaver::dismiss_screensaver,
-        ])
+        .invoke_handler(tauri::generate_handler![screensaver::dismiss_screensaver,])
         .run(tauri::generate_context!())
+        // process entry — a failed event loop cannot continue, so abort with context
         .expect("screensaver mode");
 }
