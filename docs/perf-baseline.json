@@ -1,5 +1,5 @@
 {
-  "ts": "2026-09-18T16:54:20.702Z",
+  "ts": "2026-09-18T17:08:02.649Z",
   "scanFixtureMb": 120,
   "boot": {
     "metric": "boot",
@@ -42,11 +42,113 @@
           "call": 7,
           "total": 9
         },
+        "makeover/LiveTile.tsx": {
+          "useLoad": 0,
+          "useLazy": 0,
+          "call": 0,
+          "total": 0
+        },
+        "makeover/QuickHistory.tsx": {
+          "useLoad": 0,
+          "useLazy": 0,
+          "call": 1,
+          "total": 1
+        },
+        "makeover/shared.ts": {
+          "useLoad": 0,
+          "useLazy": 0,
+          "call": 0,
+          "total": 0
+        },
+        "makeover/useCursorSection.ts": {
+          "useLoad": 0,
+          "useLazy": 2,
+          "call": 1,
+          "total": 3
+        },
+        "makeover/useEngineSection.ts": {
+          "useLoad": 1,
+          "useLazy": 1,
+          "call": 5,
+          "total": 7
+        },
+        "makeover/useFontsSection.ts": {
+          "useLoad": 0,
+          "useLazy": 2,
+          "call": 3,
+          "total": 5
+        },
+        "makeover/useLockScreenSection.ts": {
+          "useLoad": 0,
+          "useLazy": 1,
+          "call": 5,
+          "total": 6
+        },
+        "makeover/useMakeoverTheme.ts": {
+          "useLoad": 0,
+          "useLazy": 0,
+          "call": 4,
+          "total": 4
+        },
+        "makeover/usePackExport.ts": {
+          "useLoad": 0,
+          "useLazy": 0,
+          "call": 2,
+          "total": 2
+        },
+        "makeover/useScreensaverSection.ts": {
+          "useLoad": 0,
+          "useLazy": 2,
+          "call": 2,
+          "total": 4
+        },
+        "makeover/useSoundsSection.ts": {
+          "useLoad": 0,
+          "useLazy": 2,
+          "call": 4,
+          "total": 6
+        },
+        "makeover/useStaticWallpaper.ts": {
+          "useLoad": 3,
+          "useLazy": 0,
+          "call": 4,
+          "total": 7
+        },
+        "makeover/useStyleStudio.ts": {
+          "useLoad": 1,
+          "useLazy": 0,
+          "call": 2,
+          "total": 3
+        },
+        "makeover/useTaskbarSection.ts": {
+          "useLoad": 0,
+          "useLazy": 3,
+          "call": 7,
+          "total": 10
+        },
+        "makeover/useVideoSection.ts": {
+          "useLoad": 0,
+          "useLazy": 3,
+          "call": 2,
+          "total": 5
+        },
+        "makeover/useWidgetSection.ts": {
+          "useLoad": 0,
+          "useLazy": 2,
+          "call": 5,
+          "total": 7
+        },
+        "makeover/WallpaperGallery.tsx": {
+          "useLoad": 0,
+          "useLazy": 0,
+          "call": 0,
+          "total": 0
+        },
         "Makeover.tsx": {
-          "useLoad": 6,
-          "useLazy": 18,
-          "call": 59,
-          "total": 83
+          "useLoad": 1,
+          "useLazy": 0,
+          "call": 12,
+          "total": 13
         },
         "MakeoverSession.tsx": {
           "useLoad": 0,
@@ -126,8 +228,8 @@
     "scannedBytes": 125829120,
     "scannedGb": 0.12,
     "secs": 0.15,
-    "gbPerSec": 0.79,
-    "filesPerSec": 1761,
+    "gbPerSec": 0.77,
+    "filesPerSec": 1702,
     "groups": 10,
     "cascade": "size-prefilter(1MB) -> quick(len+64K head+64K tail) -> full(sha256)",
     "engine": "node-sequential (before: Rust WalkDir sequential; target: rayon parallel walker)"

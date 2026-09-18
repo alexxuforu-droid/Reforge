@@ -27,13 +27,23 @@ function countLoads(src) {
 export function measureRoundTrips() {
   const perView = {};
   let total = 0;
-  for (const f of readdirSync(viewsDir)) {
-    if (!f.endsWith(".tsx") || f.endsWith(".test.tsx")) continue;
-    const src = readFileSync(join(viewsDir, f), "utf8");
-    const c = countLoads(src);
-    perView[f] = c;
-    total += c.total;
-  }
+  // Recursive: view subdirectories (e.g. views/makeover/*.ts hooks) hold
+  // real mount-time loads too — counting only top-level files would let a
+  // pure refactor move the number without changing any behavior.
+  const walkViews = (d, prefix = "") => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      const p = join(d, e.name);
+      const key = prefix + e.name;
+      if (e.isDirectory()) { walkViews(p, key + "/"); continue; }
+      if (!key.endsWith(".tsx") && !key.endsWith(".ts")) continue;
+      if (key.endsWith(".test.tsx") || key.endsWith(".test.ts")) continue;
+      const src = readFileSync(p, "utf8");
+      const c = countLoads(src);
+      perView[key] = c;
+      total += c.total;
+    }
+  };
+  walkViews(viewsDir);
   // get_undo_log fan-out: how many files fetch the full log with blobs.
   // V2 pillar 2a: the mock implementation (dispatcher + src/lib/mock/
   // handlers) *serves* the command — it is not a caller. Exclude it, and
