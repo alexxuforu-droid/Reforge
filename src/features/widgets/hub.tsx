@@ -7,6 +7,7 @@
 import { useEffect, useReducer, useState } from "react";
 import { errorCopy } from "../../lib/api";
 import { InlineAlert, Section, Toggle, toast } from "../../components/ui";
+import { MagneticButton } from "../../components/motion/MagneticButton";
 import { IconChevronDown, IconChevronUp, IconCpu, IconStar } from "../../components/icons";
 import { ACHIEVEMENTS } from "./achievements";
 import { WIDGETS, type ConfigField, type WidgetDef } from "./registry";
@@ -192,14 +193,12 @@ function WidgetCard({ w }: { w: WidgetDef }) {
       </div>
 
       {w.kind === "on-demand" && w.triggerLabel && (
-        <button
-          className="btn btn-primary mt-3 justify-center transition-transform duration-100 active:scale-95"
-          disabled={!on}
+        <MagneticButton
+          label={w.triggerLabel}
           onClick={fire}
-          data-testid={`widget-trigger-${w.id}`}
-        >
-          {w.triggerLabel}
-        </button>
+          disabled={!on}
+          testId={`widget-trigger-${w.id}`}
+        />
       )}
 
       {w.fields && w.fields.length > 0 && (

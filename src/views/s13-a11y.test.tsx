@@ -32,11 +32,13 @@ function relLum(hex: string) {
 describe("Premium motion safeguards", () => {
   it("limits playful pointer effects to fine pointers with motion enabled", () => {
     expect(css).toContain("@media (prefers-reduced-motion: no-preference) and (hover: hover) and (pointer: fine)");
-    expect(css).toContain(".look-artwork:hover");
+    expect(css).toContain(".magnet-label:hover");
   });
 
-  it("provides static reduced-motion fallbacks for every new spatial effect", () => {
-    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.look-artwork/);
+  it("provides the blur-reveal token with a reduced-motion kill path", () => {
+    expect(css).toContain(".animate-blur-in");
+    // the global reduced-motion block zeroes every animation duration
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)\s*\{[^}]*animation-duration:\s*0\.01ms/);
   });
 });
 

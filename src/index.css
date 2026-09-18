@@ -724,6 +724,9 @@ textarea:focus-visible {
 .animate-step-in {
   animation: stepIn var(--duration-normal) var(--ease-out-expo) both;
 }
+.animate-blur-in {
+  animation: blurIn var(--duration-normal) var(--ease-out-expo) both;
+}
 
 @keyframes fadeIn {
   from { opacity: 0; }
@@ -745,19 +748,15 @@ textarea:focus-visible {
   from { opacity: 0; transform: translateY(3px); }
   to { opacity: 1; transform: none; }
 }
+@keyframes blurIn {
+  from { opacity: 0; filter: blur(6px); }
+  to { opacity: 1; filter: blur(0); }
+}
 
 /* ============================================================================
    Hover row
    ============================================================================ */
-
-.look-artwork {
-  transition: transform 180ms var(--ease-out-expo);
-  transform-origin: center;
-}
 @media (prefers-reduced-motion: no-preference) and (hover: hover) and (pointer: fine) {
-  .look-artwork:hover {
-    transform: perspective(900px) rotateX(2deg) rotateY(-3deg) scale(1.015);
-  }
   .magnet-label {
     transition: transform 150ms var(--ease-out-expo);
   }
@@ -805,10 +804,6 @@ textarea:focus-visible {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .look-artwork {
-    transform: none !important;
-    transition: none !important;
-  }
   .spotlight-card::after {
     content: none !important;
   }

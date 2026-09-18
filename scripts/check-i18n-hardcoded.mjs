@@ -13,9 +13,9 @@ import ts from "typescript";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-// Total violations measured 2026-09-18 (Power slice). Lower on every
+// Total violations measured 2026-09-18 (motion set). Lower on every
 // extraction slice; the gate fails if the count ever rises above this.
-const BASELINE = 935;
+const BASELINE = 934;
 
 const UI_PROPS = new Set([
   "title", "subtitle", "label", "description", "placeholder", "aria-label",

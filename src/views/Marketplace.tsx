@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { errorCopy, call } from "../lib/api";
 import type { BundleInfo, BundleManifest } from "../lib/types";
 import { Modal, Section, toast } from "../components/ui";
+import { TiltCard } from "../components/motion/TiltCard";
 import {
   IconRefresh, IconDownload, IconUpload, IconCheck, IconTrash, IconEye, IconCopy,
 } from "../components/icons";
@@ -463,9 +464,11 @@ export default function Marketplace() {
               style={{ background: packGradient(preview.manifest) }}
             >
               {previewImg && (
-                <div className="look-artwork mb-3 overflow-hidden rounded-lg border border-white/10">
-                  <img src={previewImg} alt={`${preview.manifest.name} preview`} className="h-36 w-full object-cover" />
-                </div>
+                <TiltCard title={`${preview.manifest.name} preview`}>
+                  <div className="mb-3 overflow-hidden rounded-lg border border-white/10">
+                    <img src={previewImg} alt={`${preview.manifest.name} preview`} className="h-36 w-full object-cover" />
+                  </div>
+                </TiltCard>
               )}
               <div className="text-sm font-semibold text-[var(--text-primary)]">
                 {preview.manifest.name}{" "}

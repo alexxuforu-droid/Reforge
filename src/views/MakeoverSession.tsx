@@ -7,6 +7,7 @@ import { errorCopy, call, callWithTimeout, fmt } from "../lib/api";
 import { recordStyleApplied } from "../lib/styleAnalytics";
 import type { CleanResult, DuplicateScan, DuplicateGroup, HealthScore, JunkScan, SceneConfig, StartupEntry } from "../lib/types";
 import { ScenePreview, Section, StatusDot, toast } from "../components/ui";
+import { BlurReveal } from "../components/motion/BlurReveal";
 import type { QuizAnswers, StyleDef } from "../styles/types";
 import {
   ALL_STYLES,
@@ -722,7 +723,7 @@ export default function MakeoverSession() {
       {/* ---- 5. Done ---- */}
       {step === "done" && (
         <Section title="Step 5 · Done" subtitle="Your makeover summary">
-          <p aria-live="polite" className="animate-fade-in text-sm text-[var(--text-secondary)]">Your new look is ready — every change below reverts from History.</p>
+          <BlurReveal text="Your new look is ready — every change below reverts from History." className="text-sm text-[var(--text-secondary)]" />
           <div aria-live="polite" className="grid gap-3 sm:grid-cols-3">
             <div className="card animate-slide-up p-4" style={{ animationDelay: "0ms" }}>
               <div className="text-2xs font-medium uppercase tracking-wider text-[var(--text-tertiary)]">Protection</div>
