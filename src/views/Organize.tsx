@@ -791,7 +791,7 @@ export default function Organize() {
                 key={sf.id}
                 className="flex items-center gap-2 rounded-lg bg-[var(--surface-overlay)] px-3 py-2"
               >
-                <IconFolder size={14} className="text-[var(--text-tertiary)]" />
+                <IconFolder size={14} className="folder-icon text-[var(--text-tertiary)]" />
                 <span className="flex-1 text-xs text-[var(--text-secondary)]">{sf.name}</span>
                 <button
                   className="btn-ghost btn-sm"
