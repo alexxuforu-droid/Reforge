@@ -946,6 +946,16 @@ async function mockCallInner<T>(cmd: string, args: Record<string, unknown> = {})
           s.fonts = [...s.fonts.filter((f) => f.original !== b.font!.original), { original: b.font!.original, substituted: b.font!.before ?? "" }];
         }
       }
+      if (e.kind === "marketplace_apply") {
+        // Mirrors undo.rs "marketplace_apply": restore the pre-apply look
+        // from the entry's before composite and unmark the pack.
+        const b = (e.data.before ?? {}) as { accent?: string; mode?: string; wallpaper?: string };
+        if (b.accent) s.theme = { ...s.theme, accent_hex: b.accent };
+        if (b.mode) s.theme = { ...s.theme, mode: b.mode as "dark" | "light" };
+        if (b.wallpaper !== undefined) s.wallpaper = { ...s.wallpaper, current: b.wallpaper };
+        const applied = s.bundles.find((x) => x.id === (e.data.bundle_id as string));
+        if (applied) applied.applied = false;
+      }
       e.undone = true;
       return `Reverted: ${e.description}` as T;
     }
@@ -1522,6 +1532,9 @@ async function mockCallInner<T>(cmd: string, args: Record<string, unknown> = {})
     case "marketplace_apply_bundle": {
       const b = s.bundles.find((x) => x.id === args.bundle_id);
       if (!b) throw new Error("Pack not found");
+      // Snapshot the pre-apply look BEFORE mutating (mirrors the Rust
+      // undo entry's before composite) so revert_entry can restore it.
+      const beforeLook = { accent: s.theme.accent_hex, mode: s.theme.mode, wallpaper: s.wallpaper.current };
       b.applied = true;
       b.applied_count = (b.applied_count ?? 0) + 1;
       const m = s.manifests.get(b.id);
@@ -1531,7 +1544,10 @@ async function mockCallInner<T>(cmd: string, args: Record<string, unknown> = {})
         const mode = m.components.find((c) => c.type === "theme_mode");
         if (mode?.mode) s.theme = { ...s.theme, mode: mode.mode as "dark" | "light" };
       }
-      pushUndo("marketplace_apply", `Applied pack: ${b.name}`, true, { bundle_id: b.id });
+      pushUndo("marketplace_apply", `Applied pack: ${b.name}`, true, {
+        bundle_id: b.id,
+        before: beforeLook,
+      });
       return `Applied pack '${b.name}' (${b.component_count} components). Revert from History.` as T;
     }
     case "marketplace_get_manifest": {
