@@ -167,4 +167,18 @@ describe("S13.1 keyboard navigation", () => {
     fireEvent.keyDown(nav, { key: "End" });
     expect(document.activeElement).toBe(items[items.length - 1]);
   });
+
+  it("makeover stepper exposes tabs with the current step selected", async () => {
+    const { default: MakeoverSession } = await import("./MakeoverSession");
+    const { container } = render(<MakeoverSession />);
+    const tablist = await waitFor(
+      () => container.querySelector('[role="tablist"][aria-label="Makeover steps"]')!,
+      { timeout: 8000 },
+    );
+    expect(tablist).not.toBeNull();
+    const tabs = Array.from(tablist.querySelectorAll('[role="tab"]'));
+    expect(tabs).toHaveLength(5);
+    const selected = tabs.filter((t) => t.getAttribute("aria-selected") === "true");
+    expect(selected).toHaveLength(1);
+  });
 });

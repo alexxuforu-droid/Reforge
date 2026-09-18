@@ -427,6 +427,8 @@ export default function MakeoverSession() {
           return (
             <button
               key={s.id}
+              role="tab"
+              aria-selected={active}
               onClick={() => go(s.id)}
               aria-current={active ? "step" : undefined}
               className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs transition-colors ${active ? "bg-[var(--surface-selected)] text-[var(--accent-hex)]" : done ? "text-[var(--status-success)] hover:bg-[var(--surface-hover)]" : "text-[var(--text-tertiary)] hover:bg-[var(--surface-hover)]"}`}
@@ -441,6 +443,7 @@ export default function MakeoverSession() {
       </div>
 
       {/* ---- 1. Protect ---- */}
+      <div key={step} className="animate-step-in">
       {step === "snapshot" && (
         <Section title="Step 1 · Protect" subtitle="Nothing you do here should be one-way">
           <div className="flex items-start gap-4">
@@ -772,6 +775,7 @@ export default function MakeoverSession() {
           </div>
         </Section>
       )}
+      </div>
     </div>
   );
 }
