@@ -22,6 +22,9 @@ node scripts/check-arg-parity.mjs
 echo "==> Kind parity"
 node scripts/check-kind-parity.mjs
 
+echo "==> i18n hardcoded-string guard (X-1)"
+node scripts/check-i18n-hardcoded.mjs
+
 echo "==> Repo size guard (P4-7)"
 bash scripts/check-repo-size.sh
 
