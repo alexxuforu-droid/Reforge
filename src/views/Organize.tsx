@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { errorCopy, call, fmt, onEvent } from "../lib/api";
+import { errorCopy, call, callWithTimeout, fmt, onEvent } from "../lib/api";
 import { useLoad } from "../lib/useLoad";
 import type {
   ArchiveMove, BigDupeGroup, BiggestFile, CleanNowItem, DriveRadar, DuplicateScan, MoveOp,
@@ -149,11 +149,13 @@ export default function Organize() {
     setUnusedScanning(true);
     setScanProgress(null);
     try {
-      const files = await call<UnusedFile[]>("scan_unused", {
+      // P3-5 — a big-drive scan can run for minutes; a hung scan must not
+      // strand the busy state forever.
+      const files = await callWithTimeout<UnusedFile[]>("scan_unused", {
         dir: unusedDir,
         older_than_days: unusedDays,
         min_mb: unusedMinMb,
-      });
+      }, 120_000);
       setUnused(files);
       setUnusedSelected(new Set());
     } catch (e) {
@@ -257,7 +259,7 @@ export default function Organize() {
     setDupScanning(true);
     setDupProgress(null);
     try {
-      const s = await call<DuplicateScan>("scan_duplicates", { dir: dupDir });
+      const s = await callWithTimeout<DuplicateScan>("scan_duplicates", { dir: dupDir }, 120_000);
       setDupScan(s);
     } catch (e) {
       toast(errorCopy(e), "err");
@@ -792,7 +794,7 @@ export default function Organize() {
                 <IconFolder size={14} className="text-[var(--text-tertiary)]" />
                 <span className="flex-1 text-xs text-[var(--text-secondary)]">{sf.name}</span>
                 <button
-                  className="text-2xs text-[var(--text-secondary)] hover:underline"
+                  className="btn-ghost btn-sm"
                   onClick={() => runSmartFolder(sf)}
                 >
                   Run
@@ -801,7 +803,7 @@ export default function Organize() {
             ))}
           </div>
           {sfHits && (
-            <div className="mt-3 space-y-1">
+            <div aria-live="polite" className="animate-fade-in mt-3 space-y-1">
               {sfHits.map((h) => (
                 <div key={h.path} className="truncate text-2xs text-[var(--text-tertiary)]" title={h.path}>{h.path}</div>
               ))}
