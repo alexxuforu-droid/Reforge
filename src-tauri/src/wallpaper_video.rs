@@ -72,6 +72,19 @@ fn find_monitor_rect(rects: &[MonitorRect], want: &str) -> Option<(usize, i32, i
         .map(|(i, (_, x, y, w, h))| (i, *x, *y, *w, *h))
 }
 
+/// Shared topology rig (X-3): resolve a pinned monitor name against the
+/// CURRENT rect list. Returns the matching rect; None means "unknown or
+/// unpinned" and callers fall back to the virtual screen. Matching is by
+/// monitor id, never by index, so unplug/reorder stays correct. Placement
+/// uses physical pixels, so DPI changes need no code here.
+pub(crate) fn resolve_placement(
+    rects: &[MonitorRect],
+    monitor: &Option<String>,
+) -> Option<(usize, i32, i32, u32, u32)> {
+    let want = monitor.as_deref()?;
+    find_monitor_rect(rects, want)
+}
+
 /// Resolve where the video window goes: `Some((tauri_index, x, y, w, h))`
 /// pins it to that monitor; None falls back to the virtual screen (monitor
 /// unknown or unpinned).
@@ -79,7 +92,9 @@ fn choose_placement(
     app: &tauri::AppHandle,
     monitor: &Option<String>,
 ) -> Option<(usize, i32, i32, u32, u32)> {
-    let want = monitor.as_deref()?;
+    if monitor.is_none() {
+        return None;
+    }
     let monitors = app.available_monitors().ok()?;
     let rects: Vec<MonitorRect> = monitors
         .iter()
@@ -93,7 +108,7 @@ fn choose_placement(
             )
         })
         .collect();
-    find_monitor_rect(&rects, want)
+    resolve_placement(&rects, monitor)
 }
 
 /// Video windows live under their own label prefix so they can never collide
@@ -448,5 +463,34 @@ mod m1_tests {
         assert!(is_video_window_label(&video_window_label(3)));
         // the scene engine's window must never match
         assert!(!is_video_window_label("reforge-wallpaper"));
+    }
+
+    fn topo(names: &[&str]) -> Vec<MonitorRect> {
+        names
+            .iter()
+            .enumerate()
+            .map(|(i, n)| ((*n).to_string(), (i as i32) * 1920, 0, 1920, 1080))
+            .collect()
+    }
+
+    #[test]
+    fn reorder_and_removal_resolve_by_monitor_id_not_index() {
+        // A unplugged, B became primary: B keeps its bounds, A is unknown.
+        let after = topo(&["B"]);
+        assert_eq!(
+            resolve_placement(&after, &Some("B".into())),
+            Some((0, 0, 0, 1920, 1080))
+        );
+        assert_eq!(resolve_placement(&after, &Some("A".into())), None);
+    }
+
+    #[test]
+    fn reorder_keeps_each_monitors_own_bounds() {
+        let after = topo(&["B", "A"]);
+        assert_eq!(
+            resolve_placement(&after, &Some("A".into())),
+            Some((1, 1920, 0, 1920, 1080))
+        );
+        assert_eq!(resolve_placement(&after, &None), None);
     }
 }
