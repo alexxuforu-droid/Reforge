@@ -591,6 +591,9 @@ export interface StyleScheduleEntry {
   style_id: string;
   name: string;
   payload: StyleApplyPayload;
+  // P5-7 — when set, apply an installed pack instead of a catalog style.
+  bundle_id?: string | null;
+  bundle_name?: string | null;
   last_fired_day: string;
 }
 
@@ -672,6 +675,8 @@ export interface BundleManifest {
   author: string;
   description: string;
   thumbnail: string;
+  schema_version?: number;
+  changelog?: string[];
   components: BundleComponentDef[];
 }
 
@@ -683,6 +688,7 @@ export interface BundleInfo {
   description: string;
   component_count: number;
   applied: boolean;
+  applied_count: number;
 }
 
 // ---- Network / VPN ----
@@ -761,6 +767,16 @@ export interface TaskbarState {
   color_match: boolean;
 }
 
+export interface TaskbarCapabilities {
+  reposition_supported: boolean;
+  size_supported: boolean;
+  alignment_supported: boolean;
+  autohide_supported: boolean;
+  color_match_supported: boolean;
+  is_win11: boolean;
+  note: string;
+}
+
 export interface PendingShellState {
   pending: boolean;
   changes: string[];
@@ -836,6 +852,8 @@ export interface VideoWallpaper {
   width: number;
   height: number;
   name: string;
+  /** Monitor device id (e.g. \\.\DISPLAY2) the video is pinned to; null = all monitors */
+  monitor?: string | null;
 }
 
 export interface TranscodeStatus {

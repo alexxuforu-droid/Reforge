@@ -338,6 +338,11 @@ const store = {
   } as StorageConfig,
   recycleBinSize: 2_400_000_000 as number,
   unusedFiles: [] as UnusedFile[],
+  // Phase 1 — Security Center preview state (mirrors security_center.rs)
+  exclusions: [] as { target: string; kind: string }[],
+  scanInProgress: false as boolean,
+  rtDisableUntil: 0 as number,
+  splash: { enabled: false, timeout_secs: 6, launch_at_login: false } as { enabled: boolean; timeout_secs: number; launch_at_login: boolean },
 };
 
 // S5.4 — the canonical "Windows Default" scheme GUID. Mirror of the Rust
@@ -1497,14 +1502,14 @@ async function mockCallInner<T>(cmd: string, args: Record<string, unknown> = {})
     case "marketplace_import": {
       const name = String(args.source ?? "").split(/[\\/]/).pop() || "imported-pack";
       const id = "pack-" + uid();
-      const b: BundleInfo = { id, name: name.replace(/\.reforgepack$/i, ""), version: "1.0", author: "Imported", description: "Imported from disk — components listed in Preview.", component_count: 3, applied: false };
+      const b: BundleInfo = { id, name: name.replace(/\.reforgepack$/i, ""), version: "1.0", author: "Imported", description: "Imported from disk — components listed in Preview.", component_count: 3, applied: false, applied_count: 0 };
       s.bundles.push(b);
       s.manifests.set(id, { id, name: b.name, version: "1.0", author: "Imported", description: b.description, thumbnail: "", components: [{ type: "accent", hex: "#6D7CFF" }, { type: "theme_mode", mode: "dark" }, { type: "wallpaper", asset: "wp.png" }] });
       return { ...b } as T;
     }
     case "marketplace_export_look": {
       const id = "look-" + uid();
-      const b: BundleInfo = { id, name: (args.name as string) || "My Look", version: "1.0", author: "Reforge User", description: "A snapshot of your current look captured in one click.", component_count: 4, applied: false };
+      const b: BundleInfo = { id, name: (args.name as string) || "My Look", version: "1.0", author: "Reforge User", description: "A snapshot of your current look captured in one click.", component_count: 4, applied: false, applied_count: 0 };
       s.bundles.push(b);
       s.manifests.set(id, { id, name: b.name, version: "1.0", author: "Reforge User", description: b.description, thumbnail: "", components: [{ type: "accent", hex: s.theme.accent_hex }, { type: "theme_mode", mode: s.theme.mode }, { type: "wallpaper", asset: "wp.png" }, { type: "taskbar", size: "medium" }] });
       return { ...b } as T;
@@ -1515,6 +1520,7 @@ async function mockCallInner<T>(cmd: string, args: Record<string, unknown> = {})
       const b = s.bundles.find((x) => x.id === args.bundle_id);
       if (!b) throw new Error("Pack not found");
       b.applied = true;
+      b.applied_count = (b.applied_count ?? 0) + 1;
       const m = s.manifests.get(b.id);
       if (m) {
         const accent = m.components.find((c) => c.type === "accent");
@@ -1534,6 +1540,25 @@ async function mockCallInner<T>(cmd: string, args: Record<string, unknown> = {})
       s.bundles = s.bundles.filter((b) => b.id !== args.bundle_id);
       s.manifests.delete(args.bundle_id as string);
       return null as T;
+    }
+    case "marketplace_preview_asset":
+      // 1x1 transparent PNG — enough for the browser preview to render the img.
+      return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==" as T;
+    case "marketplace_import_components": {
+      const id = "code-" + uid();
+      const b: BundleInfo = {
+        id,
+        name: String(args.name ?? "Shared Look"),
+        version: "1.0",
+        author: "Shared code",
+        description: "Imported from a share code — the declarative look, no media files.",
+        component_count: (args.components as unknown[]).length,
+        applied: false,
+        applied_count: 0,
+      };
+      s.bundles.push(b);
+      s.manifests.set(id, { id, name: b.name, version: "1.0", author: "Shared code", description: b.description, thumbnail: "", schema_version: 2, components: args.components as BundleManifest["components"] });
+      return { ...b } as T;
     }
 
     // ---- network / VPN ----
@@ -1571,6 +1596,13 @@ async function mockCallInner<T>(cmd: string, args: Record<string, unknown> = {})
       pushUndo("video_wallpaper_stop", "Stopped video wallpaper (static restored)", true, { video: null });
       return { ...s.engine, media: null } as T;
     }
+    case "set_video_paused":
+      return (args.paused ? "Video paused" : "Video playing") as T;
+    case "read_image_data_url":
+      // 1x1 transparent PNG — enough for the browser preview to render the img.
+      return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==" as T;
+    case "bundle_diagnostics":
+      return "C:\\Users\\preview\\Downloads\\reforge-diagnostics-0.txt (browser preview)" as T;
     case "media_get_transcode_status":
       return { available: true, version: "ffmpeg version 6.1 (preview)", path: "resources/bin/ffmpeg.exe", max_import_bytes: 500 * 1024 * 1024, note: `Videos are normalized on import — preset: ${s.transcodeConfig.preset}.` } as T;
     case "get_transcode_config":
@@ -1878,8 +1910,11 @@ async function mockCallInner<T>(cmd: string, args: Record<string, unknown> = {})
         { id: "asr-2", name: "Block Office apps from creating child processes", action: "disabled" },
         { id: "asr-3", name: "Block credential stealing from Windows subsystem", action: "enabled" },
       ] as T;
-    case "security_trigger_scan":
+    case "security_trigger_scan": {
+      s.scanInProgress = true;
+      setTimeout(() => { s.scanInProgress = false; }, 4000);
       return `Quick scan started (${args.scan_type ?? "quick"}) — results appear in the Security Center.` as T;
+    }
     case "security_update_definitions":
       return "Definition update triggered — Defender is up to date." as T;
     case "security_restore_threat":
@@ -1890,6 +1925,106 @@ async function mockCallInner<T>(cmd: string, args: Record<string, unknown> = {})
       return { mode: args.mode as string } as T;
     case "security_set_asr_rule_action":
       return null as T;
+    // ---- Phase 1 — Security Center commands that now have UI ----
+    case "security_get_defender_detail":
+      return {
+        real_time_protection_on: true,
+        last_scan_type: "quick",
+        last_scan_time: new Date(Date.now() - 86400000).toISOString(),
+        last_scan_result: "completed",
+        signature_age_days: 1,
+        definitions_up_to_date: true,
+        definitions_age: "1 days",
+        tamper_protection: true,
+        behavior_monitor_on: true,
+        nis_on: true,
+        on_access_protection_on: true,
+        ioav_protection_on: true,
+      } as T;
+    case "security_list_registered_products":
+      return [
+        { name: "Microsoft Defender Antivirus", product_kind: "antivirus", enabled: true, up_to_date: true, product_state_hex: "0x00001010" },
+        { name: "Windows Defender Firewall", product_kind: "firewall", enabled: true, up_to_date: true, product_state_hex: "0x00001010" },
+        { name: "Example AV Suite", product_kind: "antivirus", enabled: true, up_to_date: false, product_state_hex: "0x00000000" },
+      ] as T;
+    case "security_open_thirdparty_scanner":
+      return "Opened Windows Security settings." as T;
+    case "security_manage_exclusions": {
+      const target = args.target as string;
+      const kind = (args.kind as string) ?? "path";
+      if (args.action === "add" && !s.exclusions.some((x) => x.target === target && x.kind === kind)) {
+        s.exclusions.push({ target, kind });
+      }
+      if (args.action === "remove") {
+        s.exclusions = s.exclusions.filter((x) => !(x.target === target && x.kind === kind));
+      }
+      return s.exclusions.map((x) => ({ ...x })) as T;
+    }
+    case "security_manage_cfa_allowlist":
+      return `Added ${args.target} to the Controlled Folder Access ${args.is_folder ? "protected folders" : "allowed applications"} list.` as T;
+    case "security_request_temporary_rt_disable": {
+      const secs = (args.duration_secs as number) ?? 600;
+      s.rtDisableUntil = Date.now() + secs * 1000;
+      return `Real-time protection disabled for ${secs} seconds. It will re-enable automatically.` as T;
+    }
+    case "security_get_rt_disable_remaining_time": {
+      const remaining = Math.max(0, Math.ceil((s.rtDisableUntil - Date.now()) / 1000));
+      return { disabled: s.rtDisableUntil > Date.now(), remaining_secs: remaining } as T;
+    }
+    case "security_cancel_rt_disable_early":
+      s.rtDisableUntil = 0;
+      return "Real-time protection re-enabled." as T;
+    case "security_get_scan_progress":
+      return { in_progress: s.scanInProgress, progress: s.scanInProgress ? 50 : 100 } as T;
+    case "security_get_digest":
+      return {
+        overall: "healthy",
+        third_party_active: false,
+        tamper_protection: true,
+        recent_scans: [
+          { ts: Date.now() - 3600000, scan_type: "quick", result: "completed", threats_found: 0 },
+        ],
+      } as T;
+    case "security_get_threat_detail":
+      return {
+        ThreatID: Number(args.threat_id),
+        ThreatName: "Win32/Example.Threat",
+        SeverityID: 5,
+        CategoryID: 1,
+        FirstSeen: new Date(Date.now() - 86400000).toISOString(),
+        Status: "Quarantined",
+        Resources: ["C:\\Users\\you\\Downloads\\example.exe"],
+      } as T;
+    case "security_get_flagged_entry_detail":
+      return {
+        name: args.name,
+        location: args.location,
+        command: "C:\\example\\helper.exe",
+        impact: 4,
+        admin_required: false,
+      } as T;
+    // ---- Phase 1 — splash + taskbar capabilities (splash.rs / shell.rs) ----
+    case "get_splash_config":
+      return { ...s.splash } as T;
+    case "set_splash_config": {
+      s.splash = { ...(args.config as typeof s.splash) };
+      return { ...s.splash } as T;
+    }
+    case "set_splash_login_launch":
+      s.splash = { ...s.splash, launch_at_login: args.on as boolean };
+      return s.splash.launch_at_login as T;
+    case "dismiss_splash":
+      return null as T;
+    case "shell_get_taskbar_capabilities":
+      return {
+        reposition_supported: false,
+        size_supported: true,
+        alignment_supported: true,
+        autohide_supported: true,
+        color_match_supported: true,
+        is_win11: true,
+        note: "Windows 11 removed the ability to move the taskbar to the top/side. Position controls are hidden.",
+      } as T;
     // ---- RGB (E7.9): mock parity with rgb.rs so preview matches desktop ----
     case "rgb_detect":
       return { available: false, devices: [], note: "No RGB devices in browser preview — run the desktop app to detect OpenRGB devices." } as T;
@@ -1897,6 +2032,8 @@ async function mockCallInner<T>(cmd: string, args: Record<string, unknown> = {})
       return `Set RGB device ${args.device_index ?? 0} to ${args.hex}` as T;
     case "rgb_restore_current_mode":
       return `Restored RGB device ${args.device_index ?? 0} to its current mode` as T;
+    case "rgb_set_zone_static":
+      return `Set RGB device ${args.device_index ?? 0} zone ${args.zone_index ?? 0} to ${args.hex}` as T;
     // ---- Widgets hub (fun module) — mock parity with fun/*.rs ----
     case "fun_get_state":
       return {

@@ -179,3 +179,122 @@ export function shareCodeError(code: string): string | null {
   if (!/^[0-9A-Z]+$/.test(c)) return "Codes only use digits and A–Z (no I, L, O, U).";
   return decodeStyleCode(c) ? null : "That code didn't check out — check for typos.";
 }
+
+// ---------------------------------------------------------------------------
+// Pack share codes (P5-3) — a longer code that carries a pack's *declarative*
+// look: accent, mode, taskbar, and an animated scene. Media files (wallpaper
+// images, video, sound files) can't fit in a code — those travel in the pack
+// file itself; the code shares the look's settings.
+//
+// Format: 20 Crockford base32 chars = 95 payload bits + 1 checksum char.
+//   bits 0-3     version (1)
+//   bits 4-27    accent 24-bit RGB
+//   bit 28       mode (0 dark, 1 light)
+//   bits 29-30   taskbar size (0 small, 1 medium, 2 large)
+//   bit 31       taskbar alignment (0 left, 1 center)
+//   bit 32       taskbar autohide
+//   bits 33-36   scene kind index (SCENE_KINDS)
+//   bits 37-40   scene speed step (0.2 + n*0.2)
+//   bits 41-44   scene density step (0.2 + n*0.12)
+//   bits 45-92   scene colors as 3 × 16-bit RGB565
+//   char 20      checksum
+// ---------------------------------------------------------------------------
+
+export const PACK_CODE_LENGTH = 20;
+
+const SCENE_KINDS = [
+  "particles", "waves", "geometric", "parallax", "aurora", "stars", "embers",
+  "rain", "fireflies", "snowfall-wind", "bokeh", "smoke", "waves-3d",
+] as const;
+
+function to565(hex: string): number {
+  const h = hex.replace("#", "");
+  const r = parseInt(h.slice(0, 2), 16) >> 3;
+  const g = parseInt(h.slice(2, 4), 16) >> 2;
+  const b = parseInt(h.slice(4, 6), 16) >> 3;
+  return (r << 11) | (g << 5) | b;
+}
+
+function from565(v: number): string {
+  const r = (((v >> 11) & 31) << 3) | (((v >> 11) & 31) >> 2);
+  const g = (((v >> 5) & 63) << 2) | (((v >> 5) & 63) >> 4);
+  const b = ((v & 31) << 3) | ((v & 31) >> 2);
+  return `#${((r << 16) | (g << 8) | b | 0x1000000).toString(16).slice(1)}`;
+}
+
+/** Encode a pack's declarative components into a 20-char share code, or null
+ *  if it has no scene (the code's core) or an unknown scene kind. */
+export function encodePackCode(m: {
+  components: { type: string; hex?: string; mode?: string; size?: string; alignment?: string; autohide?: boolean; kind?: string; speed?: number; density?: number; colors?: string[] }[];
+}): string | null {
+  const accent = m.components.find((c) => c.type === "accent")?.hex;
+  const modeC = m.components.find((c) => c.type === "theme_mode")?.mode;
+  const tb = m.components.find((c) => c.type === "taskbar");
+  const scene = m.components.find((c) => c.type === "scene");
+  if (!accent || !scene?.kind) return null;
+  const kindIdx = SCENE_KINDS.indexOf(scene.kind as (typeof SCENE_KINDS)[number]);
+  if (kindIdx < 0) return null;
+  const colors = (scene.colors ?? []).slice(0, 3);
+  while (colors.length < 3) colors.push("#000000");
+
+  let v = 0n;
+  v |= 1n; // version
+  v |= BigInt(hexToBits(accent) & 0xffffff) << 4n;
+  v |= BigInt(modeC === "light" ? 1 : 0) << 28n;
+  const sizeBits = tb?.size === "small" ? 0 : tb?.size === "large" ? 2 : 1;
+  v |= BigInt(sizeBits & 3) << 29n;
+  v |= BigInt(tb?.alignment === "left" ? 0 : 1) << 31n;
+  v |= BigInt(tb?.autohide ? 1 : 0) << 32n;
+  v |= BigInt(kindIdx & 15) << 33n;
+  v |= BigInt(speedToStep(scene.speed ?? 1)) << 37n;
+  v |= BigInt(densityToStep(scene.density ?? 1)) << 41n;
+  v |= BigInt(to565(colors[0]) & 0xffff) << 45n;
+  v |= BigInt(to565(colors[1]) & 0xffff) << 61n;
+  v |= BigInt(to565(colors[2]) & 0xffff) << 77n;
+
+  const payload = toBase32(v, 19);
+  const checksum = [...payload].reduce((a, c) => a + (ALPHA_INDEX.get(c) ?? 0), 0) % 32;
+  return payload + ALPHABET[checksum];
+}
+
+/** Decode a pack share code into the declarative components (Rust
+ *  BundleComponent serde shapes) ready for marketplace_import_components. */
+export function decodePackCode(code: string): {
+  type: string; hex?: string; mode?: string; size?: string; alignment?: string; autohide?: boolean; kind?: string; speed?: number; density?: number; colors?: string[]; id?: string;
+}[] | null {
+  const c = code.trim().toUpperCase();
+  if (!/^[0-9A-Z]+$/.test(c) || c.length !== PACK_CODE_LENGTH) return null;
+  const payload = c.slice(0, 19);
+  const given = ALPHA_INDEX.get(c[19]);
+  if (given === undefined) return null;
+  const sum = [...payload].reduce((a, ch) => a + (ALPHA_INDEX.get(ch) ?? 0), 0) % 32;
+  if (sum !== given) return null;
+  const v = fromBase32(payload);
+  if (v === null) return null;
+  if ((v & 15n) !== 1n) return null; // version must be 1
+  const accent = bitsToHex(Number((v >> 4n) & 0xffffffn));
+  const mode = ((v >> 28n) & 1n) === 1n ? "light" : "dark";
+  const size = (["small", "medium", "large"] as const)[Number((v >> 29n) & 3n)] ?? "medium";
+  const alignment = ((v >> 31n) & 1n) === 0n ? "left" : "center";
+  const autohide = ((v >> 32n) & 1n) === 1n;
+  const kind = SCENE_KINDS[Number((v >> 33n) & 15n)];
+  if (!kind) return null;
+  const speed = 0.2 + Number((v >> 37n) & 15n) * SPEED_STEP;
+  const density = 0.2 + Number((v >> 41n) & 15n) * DENSITY_STEP;
+  const colors = [0, 1, 2].map((i) => from565(Number((v >> BigInt(45 + i * 16)) & 0xffffn)));
+  return [
+    { type: "accent", hex: accent },
+    { type: "theme_mode", mode },
+    { type: "taskbar", size, alignment, autohide },
+    { type: "scene", id: `share-${c}`, kind, speed, density, colors },
+  ];
+}
+
+/** Human-readable validation message for the pack-code import UI. */
+export function packCodeError(code: string): string | null {
+  const c = code.trim().toUpperCase();
+  if (c.length === 0) return "Paste a pack share code first.";
+  if (c.length !== PACK_CODE_LENGTH) return `Pack codes are ${PACK_CODE_LENGTH} characters — got ${c.length}.`;
+  if (!/^[0-9A-Z]+$/.test(c)) return "Codes only use digits and A–Z (no I, L, O, U).";
+  return decodePackCode(c) ? null : "That code didn't check out — check for typos.";
+}
