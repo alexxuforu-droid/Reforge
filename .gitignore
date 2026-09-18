@@ -32,3 +32,13 @@ src-tauri/gen
 
 # Whip Cracker lives in its own repo (isolation) - never track it here
 whip_widget/
+
+# Secrets armor — nothing secret-shaped may EVER be committed.
+.vault/
+**/data/state.json
+**/*.storageState.json
+**/session-*.json
+**/*-account-*.json
+.env
+.env.*
+!.env.example

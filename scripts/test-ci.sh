@@ -22,6 +22,12 @@ node scripts/check-arg-parity.mjs
 echo "==> Kind parity"
 node scripts/check-kind-parity.mjs
 
+echo "==> Repo size guard (P4-7)"
+bash scripts/check-repo-size.sh
+
+echo "==> Startup budget (P3-6) — skips unless a startup.log exists"
+bash scripts/check-startup-budget.sh
+
 echo "==> S13.3 4px grid"
 node scripts/check-4px-grid.mjs
 
