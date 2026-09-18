@@ -308,3 +308,142 @@ pub fn bundle_diagnostics() -> Result<String, AppError> {
         .map_err(|e| AppError::Command(format!("write diagnostics: {}", e)))?;
     Ok(path.to_string_lossy().to_string())
 }
+
+/// X-7 — power-user surface: every config/state file Reforge owns, with a
+/// one-line description plus live exists/size. Power users can open, back up,
+/// or hand-edit these (the app re-reads them on next launch; corrupt JSON
+/// falls back to defaults per the storage layer). Read-only: nothing here
+/// writes.
+#[derive(Serialize, Clone)]
+pub struct ConfigFile {
+    pub name: String,
+    pub description: String,
+    pub exists: bool,
+    pub bytes: u64,
+}
+
+/// The documented inventory — keep in sync with the modules that own each
+/// file (name → description). Paths resolve under the app data dir.
+fn config_inventory() -> Vec<(&'static str, &'static str)> {
+    vec![
+        (
+            "theme_state.json",
+            "Accent, mode, transparency (Theme Studio)",
+        ),
+        (
+            "applied_style.json",
+            "Currently applied style id (badge source)",
+        ),
+        (
+            "wallpaper_engine.json",
+            "Animated engine + video wallpaper state",
+        ),
+        ("wallpaper_history.json", "Wallpaper rotation history"),
+        (
+            "wallpaper_slideshow.json",
+            "Slideshow folder, interval, shuffle",
+        ),
+        ("custom_scenes.json", "Your Wallpaper Studio scenes"),
+        ("widgets.json", "Desktop widget configs"),
+        ("widgets_settings.json", "Widget board settings"),
+        ("automation.json", "Schedules, blue light, style schedules"),
+        ("undo_log.json", "Reversible change log (History)"),
+        ("macros.json", "If-then automation macros"),
+        ("clipboard_history.json", "Local clipboard history"),
+        ("focus_session.json", "Focus session state"),
+        ("smart_folders.json", "Smart folder definitions"),
+        ("storage_config.json", "Safe-clean rules + exclusions"),
+        ("display_profiles.json", "Saved display profiles"),
+        ("gaming_profiles.json", "Per-game profiles"),
+        ("screensaver.json", "Screensaver scene + timeout"),
+        ("splash_config.json", "Welcome splash + launch-at-login"),
+        (
+            "pending_shell.json",
+            "Queued taskbar changes (restart to apply)",
+        ),
+        ("update_config.json", "Update channel + check-on-startup"),
+        ("staged_update.json", "Downloaded, verified pending update"),
+        ("scan_history.json", "Defender scan history"),
+        ("boot_times.json", "Boot duration trend samples"),
+        ("battery_health.json", "Cached battery health readout"),
+        ("transcode_config.json", "Video import quality preset"),
+        ("favorites.json", "Favorited styles"),
+        ("perf_history.json", "Performance graph samples"),
+        ("fun_widgets.json", "Fun overlay widgets + achievements"),
+        ("onboarding.json", "Welcome wizard seen flag"),
+        ("schema_version.json", "State migration version"),
+    ]
+}
+
+fn list_config_files_in(data_dir: &std::path::Path) -> Vec<ConfigFile> {
+    config_inventory()
+        .into_iter()
+        .map(|(name, description)| {
+            let path = data_dir.join(name);
+            let bytes = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+            ConfigFile {
+                name: name.to_string(),
+                description: description.to_string(),
+                exists: path.exists(),
+                bytes,
+            }
+        })
+        .collect()
+}
+
+#[tauri::command]
+pub fn list_config_files(state: State<'_, AppState>) -> Vec<ConfigFile> {
+    list_config_files_in(&state.data_dir)
+}
+
+#[cfg(test)]
+mod config_tests {
+    use super::*;
+
+    #[test]
+    fn inventory_names_are_unique_and_json() {
+        let inv = config_inventory();
+        assert!(!inv.is_empty());
+        let mut names: Vec<&str> = inv.iter().map(|(n, _)| *n).collect();
+        names.sort_unstable();
+        names.dedup();
+        assert_eq!(names.len(), inv.len(), "duplicate config file names");
+        for n in names {
+            assert!(n.ends_with(".json"), "{n} is not a JSON file");
+        }
+    }
+
+    #[test]
+    fn missing_dir_reports_all_absent() {
+        let dir = std::env::temp_dir().join(format!(
+            "reforge-cfg-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        let files = list_config_files_in(&dir);
+        assert_eq!(files.len(), config_inventory().len());
+        assert!(files.iter().all(|f| !f.exists && f.bytes == 0));
+    }
+
+    #[test]
+    fn existing_file_reports_size() {
+        let dir = std::env::temp_dir().join(format!(
+            "reforge-cfg-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("theme_state.json"), r#"{"mode":"dark"}"#).unwrap();
+        let files = list_config_files_in(&dir);
+        let theme = files.iter().find(|f| f.name == "theme_state.json").unwrap();
+        assert!(theme.exists);
+        assert_eq!(theme.bytes, 15);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

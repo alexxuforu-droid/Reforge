@@ -101,24 +101,62 @@ mod widgets;
 
 use state::AppState;
 
+/// X-7 — startup CLI actions, parsed pure so unit tests cover every flag.
+/// `/s` matches case-insensitively (Windows passes `/S`); everything else is
+/// exact, preserving the pre-existing `--version`/`-s` behavior.
+#[derive(Debug, PartialEq)]
+enum CliAction {
+    Version,
+    Screensaver,
+    Help,
+}
+
+fn parse_cli_arg(arg: &str) -> Option<CliAction> {
+    if arg.eq_ignore_ascii_case("/s") || arg == "-s" {
+        return Some(CliAction::Screensaver);
+    }
+    match arg {
+        "--version" | "-v" | "-V" => Some(CliAction::Version),
+        "--help" | "-h" | "-?" | "/?" => Some(CliAction::Help),
+        _ => None,
+    }
+}
+
+fn cli_help_text() -> String {
+    format!(
+        "Reforge {} — PC Makeover (Windows 10 & 11)\n\
+         Usage: reforge [option]\n\
+         \u{20} --version, -v   print the version and exit\n\
+         \u{20} --help, -h      show this help and exit\n\
+         \u{20} /s              run as screensaver (used by the Windows idle timeout)\n\
+         No option opens the Reforge window.\n\
+         Config + state live in %APPDATA%\\com.reforge.app (see Settings → Advanced).",
+        env!("CARGO_PKG_VERSION")
+    )
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // S12.4 — `--version` CLI flag: print the version and exit cleanly (used
-    // by scripts/CI to confirm which build is installed). Runs before any
-    // window or log setup so it's instant and side-effect free.
-    if std::env::args().any(|a| a == "--version" || a == "-v" || a == "-V") {
-        println!(
-            "Reforge {} ({} {})",
-            env!("CARGO_PKG_VERSION"),
-            std::env::consts::OS,
-            std::env::consts::ARCH
-        );
-        std::process::exit(0);
-    }
-    // E4.6 — when the OS launches us as the screensaver (idle timeout runs
-    // the registered exe with /s), open the scene fullscreen and skip the app.
-    if std::env::args().any(|a| a.eq_ignore_ascii_case("/s") || a == "-s") {
-        return run_screensaver_app();
+    // S12.4 + X-7 — startup flags print and exit cleanly before any window
+    // or log setup, so they're instant and side-effect free.
+    match std::env::args().skip(1).find_map(|a| parse_cli_arg(&a)) {
+        Some(CliAction::Version) => {
+            println!(
+                "Reforge {} ({} {})",
+                env!("CARGO_PKG_VERSION"),
+                std::env::consts::OS,
+                std::env::consts::ARCH
+            );
+            std::process::exit(0);
+        }
+        Some(CliAction::Help) => {
+            println!("{}", cli_help_text());
+            std::process::exit(0);
+        }
+        // E4.6 — when the OS launches us as the screensaver (idle timeout
+        // runs the registered exe with /s), open the scene fullscreen.
+        Some(CliAction::Screensaver) => return run_screensaver_app(),
+        None => {}
     }
     let log_path = startup_log_path();
     if let Some(parent) = log_path.parent() {
@@ -381,6 +419,7 @@ pub fn run() {
             system::get_health_score,
             system::get_build_info,
             system::bundle_diagnostics,
+            system::list_config_files,
             // palette
             palette::extract_palette,
             // perf
@@ -635,4 +674,46 @@ fn run_screensaver_app() {
         .run(tauri::generate_context!())
         // process entry — a failed event loop cannot continue, so abort with context
         .expect("screensaver mode");
+}
+
+/// X-7 CLI flag tests (kept after all items: clippy items-after-test-module).
+#[cfg(test)]
+mod cli_tests {
+    use super::*;
+
+    #[test]
+    fn version_flags() {
+        for f in ["--version", "-v", "-V"] {
+            assert_eq!(parse_cli_arg(f), Some(CliAction::Version));
+        }
+    }
+
+    #[test]
+    fn help_flags() {
+        for f in ["--help", "-h", "-?", "/?"] {
+            assert_eq!(parse_cli_arg(f), Some(CliAction::Help));
+        }
+    }
+
+    #[test]
+    fn screensaver_flags_preserve_case_rules() {
+        assert_eq!(parse_cli_arg("/s"), Some(CliAction::Screensaver));
+        assert_eq!(parse_cli_arg("/S"), Some(CliAction::Screensaver));
+        assert_eq!(parse_cli_arg("-s"), Some(CliAction::Screensaver));
+    }
+
+    #[test]
+    fn unknown_args_run_the_app() {
+        for f in ["", "--verbose", "/S ", "-S", "--VERSION"] {
+            assert_eq!(parse_cli_arg(f), None);
+        }
+    }
+
+    #[test]
+    fn help_text_names_every_flag() {
+        let h = cli_help_text();
+        for token in ["--version", "--help", "/s", "%APPDATA%"] {
+            assert!(h.contains(token), "help missing {token}");
+        }
+    }
 }
