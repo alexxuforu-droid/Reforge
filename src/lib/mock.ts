@@ -2121,6 +2121,42 @@ async function mockCallInner<T>(cmd: string, args: Record<string, unknown> = {})
     case "fun_close_overlay":
       return null as T;
     // ---- auto-updater (S12.1) ----
+    case "list_config_files":
+      // X-7 — mirrors system::config_inventory names so the preview shows
+      // the same documented files (sizes are illustrative in preview).
+      return [
+        ["theme_state.json", "Accent, mode, transparency (Theme Studio)"],
+        ["applied_style.json", "Currently applied style id (badge source)"],
+        ["wallpaper_engine.json", "Animated engine + video wallpaper state"],
+        ["wallpaper_history.json", "Wallpaper rotation history"],
+        ["wallpaper_slideshow.json", "Slideshow folder, interval, shuffle"],
+        ["custom_scenes.json", "Your Wallpaper Studio scenes"],
+        ["widgets.json", "Desktop widget configs"],
+        ["widgets_settings.json", "Widget board settings"],
+        ["automation.json", "Schedules, blue light, style schedules"],
+        ["undo_log.json", "Reversible change log (History)"],
+        ["macros.json", "If-then automation macros"],
+        ["clipboard_history.json", "Local clipboard history"],
+        ["focus_session.json", "Focus session state"],
+        ["smart_folders.json", "Smart folder definitions"],
+        ["storage_config.json", "Safe-clean rules + exclusions"],
+        ["display_profiles.json", "Saved display profiles"],
+        ["gaming_profiles.json", "Per-game profiles"],
+        ["screensaver.json", "Screensaver scene + timeout"],
+        ["splash_config.json", "Welcome splash + launch-at-login"],
+        ["pending_shell.json", "Queued taskbar changes (restart to apply)"],
+        ["update_config.json", "Update channel + check-on-startup"],
+        ["staged_update.json", "Downloaded, verified pending update"],
+        ["scan_history.json", "Defender scan history"],
+        ["boot_times.json", "Boot duration trend samples"],
+        ["battery_health.json", "Cached battery health readout"],
+        ["transcode_config.json", "Video import quality preset"],
+        ["favorites.json", "Favorited styles"],
+        ["perf_history.json", "Performance graph samples"],
+        ["fun_widgets.json", "Fun overlay widgets + achievements"],
+        ["onboarding.json", "Welcome wizard seen flag"],
+        ["schema_version.json", "State migration version"],
+      ].map(([name, description], i) => ({ name, description, exists: true, bytes: 512 + i * 128 })) as T;
     case "get_update_config": {
       // Normalize with defaults so a config persisted before check_on_startup
       // existed never surfaces `undefined` to the UI.

@@ -113,5 +113,10 @@
 
   "analytics.title": "Activity trends",
   "analytics.subtitle": "Changes per day over the last 2 weeks — counted from your local History, nothing uploaded",
-  "analytics.empty": "No activity yet — make a change and its day lights up here."
+  "analytics.empty": "No activity yet — make a change and its day lights up here.",
+
+  "settings.advanced": "Advanced",
+  "settings.advanced.subtitle": "Every config file Reforge owns — back them up or hand-edit them (the app re-reads on launch)",
+  "settings.advanced.loading": "Loading config inventory…",
+  "settings.advanced.missing": "not created yet"
 }

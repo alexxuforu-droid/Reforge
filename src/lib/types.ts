@@ -758,6 +758,14 @@ export interface StagedUpdate {
   downloaded_at: number;
 }
 
+// X-7 — power-user config inventory (system::list_config_files).
+export interface ConfigFile {
+  name: string;
+  description: string;
+  exists: boolean;
+  bytes: number;
+}
+
 // ---- Shell / taskbar ----
 
 export interface TaskbarState {

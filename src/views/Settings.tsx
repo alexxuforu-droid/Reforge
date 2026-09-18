@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { errorCopy, call, fmt, fmtAge, IS_TAURI, swallow } from "../lib/api";
 import { useLoad } from "../lib/useLoad";
 import { getVersion } from "@tauri-apps/api/app";
-import type { AutomationConfig, BuildInfo, BundleInfo, CapabilityMatrix, MaintenanceRun, ProfileExport, StagedUpdate, StorageConfig, StyleScheduleEntry, SystemInfo, TranscodeConfig, UpdateCheck, UpdateConfig } from "../lib/types";
+import type { AutomationConfig, BuildInfo, BundleInfo, CapabilityMatrix, ConfigFile, MaintenanceRun, ProfileExport, StagedUpdate, StorageConfig, StyleScheduleEntry, SystemInfo, TranscodeConfig, UpdateCheck, UpdateConfig } from "../lib/types";
 import { InlineAlert, PageHeader, Section, Select, SettingRow, StatusDot, Toggle, toast } from "../components/ui";
 import { onAction } from "../lib/events";
 import { ALL_STYLES } from "../styles";
@@ -34,6 +34,9 @@ export default function Settings() {
   const [pickPackTime, setPickPackTime] = useState("08:00");
   // S11.6 — due-maintenance dashboard.
   const [runningMaintenance, setRunningMaintenance] = useState(false);
+
+  // X-7 — power-user config inventory (read-only file list).
+  const { data: configFiles, error: configFilesError } = useLoad<ConfigFile[]>("list_config_files");
 
   // S12.1 — auto-updater: check → verified download → "restart to update" banner.
   const { data: updateCfg, refresh: refreshUpdateCfg } = useLoad<UpdateConfig>("get_update_config");
@@ -1083,6 +1086,25 @@ export default function Settings() {
           </>
         ) : (
           <div className="empty-state">Loading storage settings…</div>
+        )}
+      </Section>
+
+      {/* Advanced (X-7) — power-user config inventory, read-only */}
+      <Section bare title={t("settings.advanced")} subtitle={t("settings.advanced.subtitle")}>
+        {configFilesError && <InlineAlert>{configFilesError}</InlineAlert>}
+        {(configFiles ?? []).length === 0 && !configFilesError ? (
+          <div className="empty-state">{t("settings.advanced.loading")}</div>
+        ) : (
+          <div className="space-y-1">
+            {(configFiles ?? []).map((f) => (
+              <div key={f.name} className="flex items-baseline justify-between gap-3 border-b border-[var(--border-subtle)] py-1 last:border-0">
+                <span className="shrink-0 font-mono text-xs text-[var(--text-secondary)]" title={f.description}>{f.name}</span>
+                <span className="min-w-0 truncate text-right text-2xs text-[var(--text-tertiary)]" title={f.description}>
+                  {f.exists ? fmt(f.bytes) : t("settings.advanced.missing")}
+                </span>
+              </div>
+            ))}
+          </div>
         )}
       </Section>
 

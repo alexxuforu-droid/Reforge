@@ -113,5 +113,10 @@
 
   "analytics.title": "Aktivitätstrends",
   "analytics.subtitle": "Änderungen pro Tag der letzten 2 Wochen – aus deinem lokalen Verlauf gezählt, nichts hochgeladen",
-  "analytics.empty": "Noch keine Aktivität – nimm eine Änderung vor und ihr Tag leuchtet hier auf."
+  "analytics.empty": "Noch keine Aktivität – nimm eine Änderung vor und ihr Tag leuchtet hier auf.",
+
+  "settings.advanced": "Erweitert",
+  "settings.advanced.subtitle": "Alle Konfigurationsdateien von Reforge – sichern oder manuell bearbeiten (die App liest sie beim Start neu)",
+  "settings.advanced.loading": "Inventar wird geladen …",
+  "settings.advanced.missing": "noch nicht erstellt"
 }
