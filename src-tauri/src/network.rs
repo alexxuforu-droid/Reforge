@@ -101,6 +101,18 @@ fn run_netsh(args: &[&str]) -> Result<String, AppError> {
     Ok(String::from_utf8_lossy(&out.stdout).to_string())
 }
 
+/// X-9 — profile names (Wi-Fi, VPN) are frontend input that reaches netsh /
+/// rasdial argv. Bound them before they get near a command line: non-empty,
+/// sane length, no control chars. Passed as one argv element, never
+/// shell-concatenated.
+fn validate_profile_name(name: &str) -> Result<String, AppError> {
+    let name = name.trim();
+    if name.is_empty() || name.chars().count() > 128 || name.chars().any(|c| c.is_control()) {
+        return Err(AppError::Invalid("Invalid profile name.".into()));
+    }
+    Ok(name.to_string())
+}
+
 #[tauri::command]
 pub fn list_wifi_profiles() -> Vec<WifiProfile> {
     let out = run_netsh(&["wlan", "show", "profiles"]).unwrap_or_default();
@@ -129,14 +141,12 @@ pub fn forget_wifi_profile(state: State<'_, AppState>, name: String) -> Result<S
     // E3 shell audit: the profile name is frontend input woven into a netsh
     // arg — bound it before it reaches a command line (no control chars,
     // sane length; it is passed as one argv element, never shell-concatenated).
-    let name = name.trim();
-    if name.is_empty() || name.chars().count() > 128 || name.chars().any(|c| c.is_control()) {
-        return Err(AppError::Invalid("Invalid Wi-Fi profile name.".into()));
-    }
+    let name = validate_profile_name(&name)
+        .map_err(|_| AppError::Invalid("Invalid Wi-Fi profile name.".into()))?;
     // backup the profile XML first so it can be restored
     let dir = wifi_backup_dir(&state);
     std::fs::create_dir_all(&dir).map_err(|e| AppError::Command(e.to_string()))?;
-    let file = dir.join(format!("{}_{}.xml", now_millis(), sanitize(name)));
+    let file = dir.join(format!("{}_{}.xml", now_millis(), sanitize(&name)));
     tracing::info!(target: "shell", "netsh: wlan export profile name={name} folder={}", dir.display());
     let ok = cmd("netsh")
         .args([
@@ -150,7 +160,7 @@ pub fn forget_wifi_profile(state: State<'_, AppState>, name: String) -> Result<S
         .map(|o| o.status.success())
         .unwrap_or(false);
     let backup_path = if ok {
-        find_exported_xml(&dir, name).unwrap_or_else(|| file.to_string_lossy().to_string())
+        find_exported_xml(&dir, &name).unwrap_or_else(|| file.to_string_lossy().to_string())
     } else {
         String::new()
     };
@@ -337,6 +347,7 @@ pub fn vpn_connect(
     state: State<'_, AppState>,
     name: String,
 ) -> Result<Vec<VpnConnection>, AppError> {
+    let name = validate_profile_name(&name)?;
     let before_status = list_vpn_connections()
         .into_iter()
         .find(|v| v.name == name)
@@ -358,6 +369,7 @@ pub fn vpn_disconnect(
     state: State<'_, AppState>,
     name: String,
 ) -> Result<Vec<VpnConnection>, AppError> {
+    let name = validate_profile_name(&name)?;
     let before_status = list_vpn_connections()
         .into_iter()
         .find(|v| v.name == name)
@@ -474,4 +486,28 @@ pub fn reset_network(state: State<'_, AppState>) -> Result<NetResetResult, AppEr
         steps,
         backup: Some(backup),
     })
+}
+
+#[cfg(test)]
+mod validation_tests {
+    use super::*;
+
+    #[test]
+    fn profile_names_accept_normal_input() {
+        assert_eq!(validate_profile_name("Home WiFi").unwrap(), "Home WiFi");
+        assert_eq!(
+            validate_profile_name("  Work-VPN_2  ").unwrap(),
+            "Work-VPN_2"
+        );
+    }
+
+    #[test]
+    fn profile_names_reject_empty_long_and_control() {
+        assert!(validate_profile_name("").is_err());
+        assert!(validate_profile_name("   ").is_err());
+        assert!(validate_profile_name(&"x".repeat(129)).is_err());
+        assert!(validate_profile_name("a\0b").is_err());
+        assert!(validate_profile_name("a\nb").is_err());
+        assert!(validate_profile_name("a;b").is_ok());
+    }
 }
