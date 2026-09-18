@@ -1,4 +1,4 @@
-import { test, expect, openApp, navigate, state, revertHistory } from "./fixtures";
+import { test, expect, openApp, navigate, state, revertHistory, packCard } from "./fixtures";
 
 const quizAnswers = [
   "Bright daylight", "Ocean blues", "Focused and quiet", "Clean, minimal, zen",
@@ -82,4 +82,96 @@ test("junk scan, confirm clean, and verify only selected categories are removed"
   await expect(page.getByRole("checkbox")).toHaveCount(2);
   await expect(page.getByTitle("User temp files", { exact: true })).toHaveCount(0);
   expect((await state(page)).junk).toEqual(before.junk.filter((item) => item.admin_required));
+});
+
+test("pack apply records one undo entry and History reverts the whole look", async ({ page }) => {
+  await openApp(page);
+  const before = await state(page);
+  await navigate(page, "Marketplace");
+  const card = packCard(page, "Amber Retro");
+  await card.getByRole("button", { name: "Apply", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText('Apply "Amber Retro"?');
+  await dialog.getByRole("button", { name: "Apply pack", exact: true }).click();
+  await expect.poll(async () => (await state(page)).undo[0]).toMatchObject({ kind: "marketplace_apply", revertible: true });
+  expect((await state(page)).theme).not.toEqual(before.theme);
+  await revertHistory(page, "Applied pack: Amber Retro");
+  await expect.poll(async () => (await state(page)).theme).toEqual(before.theme);
+});
+
+test("pack share code round-trips from export to import", async ({ page }) => {
+  await openApp(page);
+  await navigate(page, "Marketplace");
+  await packCard(page, "Amber Retro").getByTitle("Copy a share code for this pack's look (settings only)").click();
+  await expect(page.getByText("Pack code copied — paste it to a friend")).toBeVisible({ timeout: 5000 });
+  const code = await page.evaluate(() => navigator.clipboard.readText());
+  expect(code).toMatch(/^[0-9A-Z]{20}$/);
+  await page.getByPlaceholder("20-character pack code (digits + A–Z)").fill(code);
+  await page.getByPlaceholder("Pack name", { exact: true }).fill("Round Trip");
+  await page.getByRole("button", { name: "Import code", exact: true }).click();
+  await expect(page.getByTitle("Round Trip", { exact: true })).toBeVisible();
+  await expect.poll(async () => (await state(page)).bundles.some((b) => b.name === "Round Trip")).toBe(true);
+});
+
+test("update check surfaces an available update and downloads it verified", async ({ page }) => {
+  await openApp(page, {
+    mockUpdateResult: {
+      state: "update-available", current: "0.1.0", latest: "0.2.0",
+      url: "https://reforge.app/releases/0.2.0.exe", sha256: "abc123",
+      notes: ["New looks"], message: "",
+    },
+  });
+  await navigate(page, "Settings");
+  await page.getByRole("button", { name: "Check for updates", exact: true }).click();
+  await expect(page.getByText("Reforge 0.2.0 is available (you're on 0.1.0)", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Download", exact: true }).click();
+  await expect(page.getByText(/Verified · ready to install/)).toBeVisible();
+});
+
+test("security quick scan runs with live progress and completes", async ({ page }) => {
+  await openApp(page);
+  await navigate(page, "Security");
+  await page.getByRole("button", { name: "Quick Scan", exact: true }).click();
+  await expect(page.getByText(/Scan running in the background/)).toBeVisible();
+  await expect(page.getByText(/Scan running in the background/)).toBeHidden({ timeout: 20000 });
+});
+
+test("settings automation persists across reload", async ({ page }) => {
+  await openApp(page);
+  await navigate(page, "Settings");
+  const toggle = page.getByRole("switch", { name: "Weekly junk cleanup", exact: true });
+  await expect(toggle).toHaveAttribute("aria-checked", "true");
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-checked", "false");
+  await page.reload();
+  await expect.poll(async () => (await state(page))?.theme).toBeTruthy();
+  await navigate(page, "Settings");
+  await expect(page.getByRole("switch", { name: "Weekly junk cleanup", exact: true })).toHaveAttribute("aria-checked", "false");
+  await page.getByRole("switch", { name: "Weekly junk cleanup", exact: true }).click();
+  await expect(page.getByRole("switch", { name: "Weekly junk cleanup", exact: true })).toHaveAttribute("aria-checked", "true");
+});
+
+test("command palette navigates to a view by keyboard", async ({ page }) => {
+  await openApp(page);
+  await page.keyboard.press("ControlOrMeta+k");
+  await expect(page.getByPlaceholder("Find a setting or run an action…")).toBeVisible();
+  await page.getByPlaceholder("Find a setting or run an action…").fill("Performance");
+  await page.locator("div.fixed.inset-0 button", { hasText: "Performance" }).first().click();
+  await expect(page.getByRole("heading", { name: "Performance", exact: true })).toBeVisible();
+});
+
+test("factory fresh restores the pre-makeover theme", async ({ page }) => {
+  await openApp(page);
+  const before = await state(page);
+  await navigate(page, "Marketplace");
+  const card = packCard(page, "Studio Blue");
+  await card.getByRole("button", { name: "Apply", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Apply pack", exact: true }).click();
+  await expect.poll(async () => (await state(page)).undo[0]).toMatchObject({ kind: "marketplace_apply" });
+  await navigate(page, "History");
+  await page.getByRole("button", { name: "Revert everything", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("Revert your PC to pre-makeover state?");
+  await dialog.getByRole("button", { name: "Yes, revert everything", exact: true }).click();
+  await expect.poll(async () => (await state(page)).theme).toEqual(before.theme);
 });
