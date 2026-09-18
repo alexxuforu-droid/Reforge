@@ -150,7 +150,8 @@ pub fn start(app: AppHandle) {
         let s = collect();
         if let Ok(mut g) = latest().lock() {
             *g = s.clone();
-        }    let _ = app.emit("fun:stats", &s);
-    std::thread::sleep(std::time::Duration::from_secs(1));
+        }
+        let _ = app.emit("fun:stats", &s);
+        std::thread::sleep(std::time::Duration::from_secs(1));
     });
 }

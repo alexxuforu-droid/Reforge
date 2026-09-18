@@ -76,7 +76,10 @@ fn clamp_to_virtual_screen(x: f64, y: f64, w: f64, h: f64) -> (f64, f64) {
     let (sx, sy, sw, sh) = (sx as f64, sy as f64, sw as f64, sh as f64);
     let cx = (x + w / 2.0).clamp(sx, sx + sw - 1.0);
     let cy = (y + h / 2.0).clamp(sy, sy + sh - 1.0);
-    ((cx - w / 2.0).max(sx - w + 40.0), (cy - h / 2.0).max(sy - h + 40.0))
+    (
+        (cx - w / 2.0).max(sx - w + 40.0),
+        (cy - h / 2.0).max(sy - h + 40.0),
+    )
 }
 
 /// Persist the live geometry of one widget window into widgets.json. Called
@@ -95,10 +98,7 @@ fn persist_widget_geometry(app: &tauri::AppHandle, id: &str) {
         size.height.max(80) as f64,
     );
     let monitor = monitor_index_at(app, x + w / 2.0, y + h / 2.0);
-    let dir = app
-        .path()
-        .app_data_dir()
-        .unwrap_or_default();
+    let dir = app.path().app_data_dir().unwrap_or_default();
     let mut list: Vec<WidgetConfig> = load_json(&dir.join("widgets.json"), Vec::new());
     if let Some(wcfg) = list.iter_mut().find(|w| w.id == id) {
         wcfg.x = x;
@@ -121,7 +121,10 @@ pub(crate) fn spawn_geometry_saver(
     let ts = Arc::new(AtomicU64::new(0));
     let ts_ev = ts.clone();
     window.on_window_event(move |event| {
-        if matches!(event, tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_)) {
+        if matches!(
+            event,
+            tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_)
+        ) {
             ts_ev.store(crate::storage::now_millis(), Ordering::Relaxed);
         }
     });
@@ -648,8 +651,11 @@ pub fn spawn_autohide_monitor(app: tauri::AppHandle, state: AppState) {
         loop {
             std::thread::sleep(Duration::from_secs(2));
             let settings = load_settings(&state);
+            // P3-11 — duck on battery saver / low battery too, not just
+            // fullscreen: widgets stop repainting while the last charge drains.
             let duck = settings.autohide_fullscreen
-                && crate::wallpaper_engine::fullscreen_app_active();
+                && (crate::wallpaper_engine::fullscreen_app_active()
+                    || crate::wallpaper_engine::battery_saver_on());
             if duck && !hidden {
                 hidden = true;
                 hide_or_show_widgets(&app, false);
@@ -790,8 +796,14 @@ mod tests {
             !html.contains("<script>alert(1)"),
             "raw script tag must not survive in the title"
         );
-        assert!(html.contains("&lt;/b&gt;&lt;script&gt;"), "title must be HTML-escaped");
-        assert!(html.contains("&quot; onclick=&quot;"), "attribute quotes must be escaped");
+        assert!(
+            html.contains("&lt;/b&gt;&lt;script&gt;"),
+            "title must be HTML-escaped"
+        );
+        assert!(
+            html.contains("&quot; onclick=&quot;"),
+            "attribute quotes must be escaped"
+        );
     }
 
     #[test]
@@ -803,8 +815,14 @@ mod tests {
             !html.contains("</textarea><script>"),
             "note content must not break out of the textarea"
         );
-        assert!(html.contains("&lt;/textarea&gt;&lt;script&gt;"), "content must be HTML-escaped");
-        assert!(html.contains("&amp;&#39;"), "ampersand and apostrophe must be escaped");
+        assert!(
+            html.contains("&lt;/textarea&gt;&lt;script&gt;"),
+            "content must be HTML-escaped"
+        );
+        assert!(
+            html.contains("&amp;&#39;"),
+            "ampersand and apostrophe must be escaped"
+        );
     }
 
     #[test]
@@ -887,8 +905,15 @@ mod tests {
         // new, so a future widget can't regress the S3.6 hardening.
         let hostile = "</script><script>alert(1)</script>\" onclick=\"x\" &'";
         for kind in [
-            "clock", "stats", "note", "todo", "calendar", "battery",
-            "toggles", "worldclock", "agenda",
+            "clock",
+            "stats",
+            "note",
+            "todo",
+            "calendar",
+            "battery",
+            "toggles",
+            "worldclock",
+            "agenda",
         ] {
             let mut w = cfg(kind, hostile);
             w.title = hostile.to_string();
@@ -910,7 +935,8 @@ mod tests {
                 );
             }
             assert!(
-                !html.to_lowercase().contains("http://") && !html.to_lowercase().contains("https://"),
+                !html.to_lowercase().contains("http://")
+                    && !html.to_lowercase().contains("https://"),
                 "{} must not reference remote content",
                 kind
             );

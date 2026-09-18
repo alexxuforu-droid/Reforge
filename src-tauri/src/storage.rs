@@ -131,9 +131,11 @@ pub fn scan_biggest_files_inner(
                         path: p.to_string_lossy().to_string(),
                         size: m.len(),
                         modified,
-                        category: crate::organize::category_for(&p.file_name().unwrap_or_default().to_string_lossy())
-                            .unwrap_or("Other")
-                            .to_string(),
+                        category: crate::organize::category_for(
+                            &p.file_name().unwrap_or_default().to_string_lossy(),
+                        )
+                        .unwrap_or("Other")
+                        .to_string(),
                     });
                 }
             }
@@ -266,6 +268,28 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// P3-1/P3-9 — a corrupt state file must fall back to the default, never
+    /// panic: the app can't afford to brick on a half-written json.
+    #[test]
+    fn corrupt_json_falls_back_to_default() {
+        let dir = std::env::temp_dir().join(format!("reforge-corrupt-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("t.json");
+        std::fs::write(&p, b"{ not json !!!").unwrap();
+        let back: Vec<u32> = load_json(&p, vec![7]);
+        assert_eq!(back, vec![7]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn missing_file_falls_back_to_default() {
+        let dir = std::env::temp_dir().join(format!("reforge-missing-{}", std::process::id()));
+        let p = dir.join("never-written.json");
+        let back: Vec<u32> = load_json(&p, vec![9]);
+        assert_eq!(back, vec![9]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn storage_config_defaults_are_sane() {
         let c = StorageConfig::default();
@@ -279,7 +303,9 @@ mod tests {
     fn storage_config_roundtrips_through_json() {
         let dir = std::env::temp_dir().join(format!("reforge-scfg-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        let state = crate::state::AppState { data_dir: dir.clone() };
+        let state = crate::state::AppState {
+            data_dir: dir.clone(),
+        };
         let cfg = StorageConfig {
             unused_days: 90,
             auto_clean: "weekly".into(),
@@ -310,7 +336,8 @@ mod tests {
         mk("small.txt", 1024); // 1 KB — below the 1 MB gate
         mk("sub/medium.zip", 2 * 1024 * 1024); // 2 MB archive
 
-        let found = scan_biggest_files_inner(dir.to_string_lossy().as_ref(), 10, 1, |_| {}).unwrap();
+        let found =
+            scan_biggest_files_inner(dir.to_string_lossy().as_ref(), 10, 1, |_| {}).unwrap();
         assert_eq!(found.len(), 2, "the 1 KB file must be gated out");
         assert_eq!(found[0].path, dir.join("big.mp4").to_string_lossy());
         assert_eq!(found[0].size, 5 * 1024 * 1024);

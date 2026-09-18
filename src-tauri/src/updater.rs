@@ -118,8 +118,10 @@ pub fn is_newer(candidate: &str, current: &str) -> bool {
 /// Hex sha256 of a file (the `sha2` crate is already a dependency).
 pub fn sha256_hex(path: &Path) -> Result<String, AppError> {
     use sha2::{Digest, Sha256};
-    let mut file = std::fs::File::open(path)
-        .map_err(|e| AppError::Io { path: path.display().to_string(), source: e })?;
+    let mut file = std::fs::File::open(path).map_err(|e| AppError::Io {
+        path: path.display().to_string(),
+        source: e,
+    })?;
     let mut hasher = Sha256::new();
     let mut buf = [0u8; 64 * 1024];
     loop {
@@ -192,7 +194,9 @@ fn download_to(url: &str, dest: &Path) -> Result<(), AppError> {
         .map_err(|e| AppError::Command(format!("update transport unavailable (curl.exe): {e}")))?;
     if !status.success() {
         let _ = std::fs::remove_file(dest);
-        return Err(AppError::Command("download failed — the server refused the request".into()));
+        return Err(AppError::Command(
+            "download failed — the server refused the request".into(),
+        ));
     }
     Ok(())
 }
@@ -216,7 +220,12 @@ pub struct UpdateCheck {
 pub fn check_for_update(state: State<'_, AppState>) -> UpdateCheck {
     let cfg = load_config(&state);
     let current = env!("CARGO_PKG_VERSION").to_string();
-    let base = |state: &str, latest: Option<String>, url: Option<String>, sha256: Option<String>, notes: Vec<String>, message: Option<String>| UpdateCheck {
+    let base = |state: &str,
+                latest: Option<String>,
+                url: Option<String>,
+                sha256: Option<String>,
+                notes: Vec<String>,
+                message: Option<String>| UpdateCheck {
         state: state.to_string(),
         current: current.clone(),
         latest,
@@ -310,7 +319,9 @@ pub fn download_update(
 pub fn apply_staged_update(state: State<'_, AppState>) -> Result<String, AppError> {
     let staged: Option<StagedUpdate> = load_json(&staged_path(&state), None);
     let Some(staged) = staged else {
-        return Err(AppError::Command("No staged update found — download one first".into()));
+        return Err(AppError::Command(
+            "No staged update found — download one first".into(),
+        ));
     };
     let path = Path::new(&staged.path);
     if !path.exists() {

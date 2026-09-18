@@ -97,7 +97,9 @@ fn targets() -> Vec<Target> {
         Target {
             id: "delivery_opt_cache".into(),
             label: "Delivery Optimization cache (admin)".into(),
-            path: PathBuf::from(r"C:\Windows\ServiceProfiles\NetworkService\AppData\Local\Microsoft\Windows\DeliveryOptimization\Cache"),
+            path: PathBuf::from(
+                r"C:\Windows\ServiceProfiles\NetworkService\AppData\Local\Microsoft\Windows\DeliveryOptimization\Cache",
+            ),
             admin_required: true,
         },
     ];
@@ -294,7 +296,9 @@ pub fn empty_recycle_bin() -> Result<(), AppError> {
         .output()
         .map_err(|e| AppError::Command(format!("PowerShell not available: {}", e)))?;
     if !out.status.success() {
-        return Err(AppError::Command(String::from_utf8_lossy(&out.stderr).trim().into()));
+        return Err(AppError::Command(
+            String::from_utf8_lossy(&out.stderr).trim().into(),
+        ));
     }
     Ok(())
 }
@@ -315,7 +319,11 @@ pub fn old_installers(older_than_days: u64, exclusions: &[String]) -> Vec<CleanN
         if !p.is_file() {
             continue;
         }
-        let name = p.file_name().unwrap_or_default().to_string_lossy().to_lowercase();
+        let name = p
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_lowercase();
         if !(name.ends_with(".msi") || name.ends_with(".exe")) {
             continue;
         }
@@ -370,7 +378,9 @@ fn safe_clean_items(state: &AppState) -> Vec<CleanNowItem> {
         let eligible = match t.id.as_str() {
             "temp" | "windows_temp" | "npm_cache" | "crash_dumps" => cfg.safe_temp,
             "update_cache" | "delivery_opt_cache" => cfg.safe_update_cache,
-            "edge_cache" | "chrome_cache" | "firefox_cache" | "thumbnail_cache" => cfg.safe_browser_caches,
+            "edge_cache" | "chrome_cache" | "firefox_cache" | "thumbnail_cache" => {
+                cfg.safe_browser_caches
+            }
             _ => false,
         };
         if !eligible {
@@ -473,7 +483,11 @@ pub fn clean_now_inner(state: &AppState, ids: Vec<String>) -> Result<CleanResult
                 if !src.exists() {
                     continue;
                 }
-                let name = src.file_name().unwrap_or_default().to_string_lossy().to_string();
+                let name = src
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
                 let mut dst = trash.join(&name);
                 let mut i = 1;
                 while dst.exists() {
@@ -511,7 +525,11 @@ pub fn clean_now_inner(state: &AppState, ids: Vec<String>) -> Result<CleanResult
         format!(
             "Safe clean freed {} ({})",
             format_bytes(freed),
-            if deleted == 1 { "1 item".into() } else { format!("{} items", deleted) }
+            if deleted == 1 {
+                "1 item".into()
+            } else {
+                format!("{} items", deleted)
+            }
         ),
         json!({
             "freed": freed,
@@ -552,25 +570,40 @@ mod tests {
         // The safe list is built from real system paths (TEMP, caches) — the
         // dry-run contract is that NOTHING gets deleted. We prove it by
         // planting a sentinel in the real TEMP and asserting it survives.
-        let temp = std::env::var("TEMP").unwrap_or_else(|_| std::env::temp_dir().to_string_lossy().to_string());
+        let temp = std::env::var("TEMP")
+            .unwrap_or_else(|_| std::env::temp_dir().to_string_lossy().to_string());
         let sentinel = PathBuf::from(&temp).join(format!("reforge-dryrun-{}", std::process::id()));
         std::fs::write(&sentinel, b"keep me").unwrap();
 
         let dir = std::env::temp_dir().join(format!("reforge-clean-cfg-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        let state = AppState { data_dir: dir.clone() };
+        let state = AppState {
+            data_dir: dir.clone(),
+        };
         // default config: dry_run = true
         let ids = vec!["temp".to_string()];
         let r = clean_now_inner(&state, ids).unwrap();
         assert_eq!(r.deleted_count, 0, "dry run must delete nothing");
-        assert!(std::fs::metadata(&sentinel).is_ok(), "sentinel must survive a dry run");
+        assert!(
+            std::fs::metadata(&sentinel).is_ok(),
+            "sentinel must survive a dry run"
+        );
 
         // with dry_run OFF the same call is a REAL clean — sentinel dies
-        let cfg = crate::storage::StorageConfig { dry_run: false, ..Default::default() };
+        let cfg = crate::storage::StorageConfig {
+            dry_run: false,
+            ..Default::default()
+        };
         crate::storage::save_json(&dir.join("storage_config.json"), &cfg).unwrap();
         let r2 = clean_now_inner(&state, vec!["temp".to_string()]).unwrap();
-        assert!(r2.deleted_count > 0, "real clean should delete temp contents");
-        assert!(std::fs::metadata(&sentinel).is_err(), "sentinel must be gone after a real clean");
+        assert!(
+            r2.deleted_count > 0,
+            "real clean should delete temp contents"
+        );
+        assert!(
+            std::fs::metadata(&sentinel).is_err(),
+            "sentinel must be gone after a real clean"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -241,6 +241,47 @@ pub fn set_lock_screen_spotlight_pub(state: &AppState) -> Result<(), AppError> {
         .map_err(|e| AppError::Command(e.to_string()))
 }
 
+/// The webview's CSP blocks file:// images, so any real image preview reads
+/// the file and ships it back as a data URL. Shared by the lock-screen
+/// preview (read_image_data_url) and pack previews (marketplace_preview_asset).
+pub(crate) fn image_data_url(p: &std::path::Path) -> Result<String, AppError> {
+    let meta = std::fs::metadata(p)
+        .map_err(|e| AppError::Command(format!("read image {}: {}", p.display(), e)))?;
+    if meta.len() > 25 * 1024 * 1024 {
+        return Err(AppError::Command(
+            "Image is larger than the 25 MB preview cap.".into(),
+        ));
+    }
+    let data = std::fs::read(p)
+        .map_err(|e| AppError::Command(format!("read image {}: {}", p.display(), e)))?;
+    let ext = p
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    let mime = match ext.as_str() {
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "bmp" => "image/bmp",
+        "png" => "image/png",
+        _ => "image/png",
+    };
+    use base64::Engine as _;
+    Ok(format!(
+        "data:{};base64,{}",
+        mime,
+        base64::engine::general_purpose::STANDARD.encode(data)
+    ))
+}
+
+#[tauri::command]
+pub fn read_image_data_url(path: String) -> Result<String, AppError> {
+    // P2-5 — the webview's CSP blocks file:// images, so a real lock-screen
+    // preview reads the image and ships it back as a data URL.
+    image_data_url(std::path::Path::new(&path))
+}
+
 #[tauri::command]
 pub fn set_lock_screen_hide_apps(
     state: State<'_, AppState>,

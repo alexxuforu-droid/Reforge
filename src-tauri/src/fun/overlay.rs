@@ -91,7 +91,13 @@ pub fn spawn(
         .ok_or_else(|| AppError::Command("no primary monitor".into()))?;
     let p = mon.position();
     let s = mon.size();
-    let (x, y, w, h) = compute_geometry(p.x as f64, p.y as f64, s.width as f64, s.height as f64, opts);
+    let (x, y, w, h) = compute_geometry(
+        p.x as f64,
+        p.y as f64,
+        s.width as f64,
+        s.height as f64,
+        opts,
+    );
 
     let title = if opts.title.is_empty() {
         label.to_string()
@@ -163,14 +169,26 @@ mod tests {
 
     #[test]
     fn fullscreen_covers_the_monitor() {
-        let o = OverlayOpts { fullscreen: true, ..Default::default() };
-        assert_eq!(compute_geometry(0.0, 0.0, 1920.0, 1080.0, &o), (0.0, 0.0, 1920.0, 1080.0));
+        let o = OverlayOpts {
+            fullscreen: true,
+            ..Default::default()
+        };
+        assert_eq!(
+            compute_geometry(0.0, 0.0, 1920.0, 1080.0, &o),
+            (0.0, 0.0, 1920.0, 1080.0)
+        );
     }
 
     #[test]
     fn fullscreen_respects_monitor_offset() {
-        let o = OverlayOpts { fullscreen: true, ..Default::default() };
-        assert_eq!(compute_geometry(1920.0, 0.0, 1920.0, 1080.0, &o), (1920.0, 0.0, 1920.0, 1080.0));
+        let o = OverlayOpts {
+            fullscreen: true,
+            ..Default::default()
+        };
+        assert_eq!(
+            compute_geometry(1920.0, 0.0, 1920.0, 1080.0, &o),
+            (1920.0, 0.0, 1920.0, 1080.0)
+        );
     }
 
     #[test]
@@ -182,19 +200,35 @@ mod tests {
             ..Default::default()
         };
         let (x, y, w, h) = compute_geometry(0.0, 0.0, 1920.0, 1080.0, &o);
-        assert_eq!((x, y, w, h), (1920.0 - 360.0 - 16.0, 1080.0 - 240.0 - 16.0, 360.0, 240.0));
-        assert!(x + w <= 1920.0 && y + h <= 1080.0, "must stay inside the monitor");
+        assert_eq!(
+            (x, y, w, h),
+            (1920.0 - 360.0 - 16.0, 1080.0 - 240.0 - 16.0, 360.0, 240.0)
+        );
+        assert!(
+            x + w <= 1920.0 && y + h <= 1080.0,
+            "must stay inside the monitor"
+        );
     }
 
     #[test]
     fn missing_corner_centers() {
-        let o = OverlayOpts { w: Some(700.0), h: Some(560.0), ..Default::default() };
-        assert_eq!(compute_geometry(0.0, 0.0, 1920.0, 1080.0, &o), ((1920.0 - 700.0) / 2.0, (1080.0 - 560.0) / 2.0, 700.0, 560.0));
+        let o = OverlayOpts {
+            w: Some(700.0),
+            h: Some(560.0),
+            ..Default::default()
+        };
+        assert_eq!(
+            compute_geometry(0.0, 0.0, 1920.0, 1080.0, &o),
+            ((1920.0 - 700.0) / 2.0, (1080.0 - 560.0) / 2.0, 700.0, 560.0)
+        );
     }
 
     #[test]
     fn size_defaults_to_monitor_when_unset() {
-        let o = OverlayOpts { corner: Some("top-left".into()), ..Default::default() };
+        let o = OverlayOpts {
+            corner: Some("top-left".into()),
+            ..Default::default()
+        };
         let (x, y, w, h) = compute_geometry(0.0, 0.0, 1920.0, 1080.0, &o);
         assert_eq!((x, y, w, h), (16.0, 16.0, 1920.0, 1080.0));
     }

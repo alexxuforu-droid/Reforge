@@ -110,7 +110,9 @@ pub fn sample_widget_stats(
     // network: cumulative bytes per interface; deltas give up/down rates
     let (recv, sent): (u64, u64) = sysinfo::Networks::new_with_refreshed_list()
         .iter()
-        .fold((0, 0), |(r, s), (_, d)| (r + d.received(), s + d.transmitted()));
+        .fold((0, 0), |(r, s), (_, d)| {
+            (r + d.received(), s + d.transmitted())
+        });
     let (net_down_kbps, net_up_kbps) = match (*last_net, dt_secs > 0.0) {
         (Some((pr, ps)), true) => {
             let dr = recv.saturating_sub(pr) as f64 * 8.0 / 1000.0 / dt_secs as f64;

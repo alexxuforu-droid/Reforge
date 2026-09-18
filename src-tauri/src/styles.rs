@@ -149,10 +149,14 @@ pub async fn apply_style_inner(
                 });
             match (intent.as_str(), valid_hex) {
                 ("accent-sync", Some(hex)) => {
+                    let session = app.state::<crate::rgb::RgbSession>();
                     for dev in &det.devices {
-                        if let Err(e) =
-                            crate::rgb::rgb_set_static(state_h.clone(), dev.index, hex.clone())
-                        {
+                        if let Err(e) = crate::rgb::rgb_set_static(
+                            state_h.clone(),
+                            session.clone(),
+                            dev.index,
+                            hex.clone(),
+                        ) {
                             notes.push(format!("{}: {}", dev.name, e));
                         }
                     }
@@ -265,6 +269,7 @@ pub async fn apply_style_inner(
                             .file_stem()
                             .map(|s| s.to_string_lossy().to_string())
                             .unwrap_or_else(|| "media".into()),
+                        monitor: None,
                     };
                     wallpaper_video::start_video(&app, &video)?;
                     wallpaper_engine::save_engine(
@@ -388,6 +393,7 @@ pub fn reapply_theme_components(
     }
     if let (Some(app), Some(intent)) = (app, &payload.rgb) {
         let st: State<'_, AppState> = app.state::<AppState>();
+        let session = app.state::<crate::rgb::RgbSession>();
         let det = crate::rgb::rgb_detect();
         if det.available && intent == "accent-sync" {
             let hex = payload
@@ -395,7 +401,9 @@ pub fn reapply_theme_components(
                 .clone()
                 .unwrap_or_else(theme::current_accent_hex);
             for dev in &det.devices {
-                if let Err(e) = crate::rgb::rgb_set_static(st.clone(), dev.index, hex.clone()) {
+                if let Err(e) =
+                    crate::rgb::rgb_set_static(st.clone(), session.clone(), dev.index, hex.clone())
+                {
                     notes.push(format!("{}: {}", dev.name, e));
                 }
             }

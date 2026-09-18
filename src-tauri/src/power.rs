@@ -253,7 +253,10 @@ pub fn set_power_plan(state: State<'_, AppState>, guid: String) -> Result<String
     let before = current_snapshot();
     let out = powercfg(&["/setactive", &guid]);
     if out.contains("error") || out.contains("Error") {
-        return Err(AppError::Command(format!("powercfg /setactive: {}", out.trim())));
+        return Err(AppError::Command(format!(
+            "powercfg /setactive: {}",
+            out.trim()
+        )));
     }
     let name = PLANS
         .iter()
@@ -282,7 +285,9 @@ pub fn set_screen_off_timeout(
     let out = powercfg(&["/change", "monitor-timeout-ac", &ac.to_string()]);
     let out2 = powercfg(&["/change", "monitor-timeout-dc", &dc.to_string()]);
     if out.contains("error") || out2.contains("error") {
-        return Err(AppError::Command("powercfg /change monitor-timeout failed".into()));
+        return Err(AppError::Command(
+            "powercfg /change monitor-timeout failed".into(),
+        ));
     }
     undo::log_entry(
         &state,
@@ -294,7 +299,10 @@ pub fn set_screen_off_timeout(
         }),
         true,
     )?;
-    Ok(format!("Screen off: {} min on power, {} min on battery", ac, dc))
+    Ok(format!(
+        "Screen off: {} min on power, {} min on battery",
+        ac, dc
+    ))
 }
 
 #[tauri::command]
@@ -313,7 +321,10 @@ pub fn set_hibernate(state: State<'_, AppState>, enabled: bool) -> Result<String
         json!({ "before": before, "after": json!({ "hibernate_enabled": enabled }) }),
         true,
     )?;
-    Ok(format!("Hibernate {}", if enabled { "enabled" } else { "disabled" }))
+    Ok(format!(
+        "Hibernate {}",
+        if enabled { "enabled" } else { "disabled" }
+    ))
 }
 
 /// Undo support: restore a PowerSnapshot (plan + screen-off + hibernate).

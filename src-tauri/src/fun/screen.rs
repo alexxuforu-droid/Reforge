@@ -10,8 +10,8 @@ use crate::error::AppError;
 use std::ptr;
 
 use windows::Win32::Graphics::Gdi::{
-    BitBlt, CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, SelectObject, BITMAPINFO,
-    BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, GetDC, ReleaseDC, SRCCOPY, HGDIOBJ,
+    BitBlt, CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, GetDC, ReleaseDC,
+    SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HGDIOBJ, SRCCOPY,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     GetSystemMetrics, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN,
@@ -52,10 +52,8 @@ pub fn capture_screen_base64() -> Result<String, AppError> {
         bmiColors: [Default::default()],
     };
     let mut bits: *mut core::ffi::c_void = ptr::null_mut();
-    let bmp = unsafe {
-        CreateDIBSection(Some(mem_dc), &info, DIB_RGB_COLORS, &mut bits, None, 0)
-    }
-    .map_err(|_| AppError::Command("failed to create capture bitmap".into()))?;
+    let bmp = unsafe { CreateDIBSection(Some(mem_dc), &info, DIB_RGB_COLORS, &mut bits, None, 0) }
+        .map_err(|_| AppError::Command("failed to create capture bitmap".into()))?;
 
     let cleanup = || {
         let _ = unsafe { DeleteObject(HGDIOBJ(bmp.0)) };
@@ -91,7 +89,10 @@ pub fn capture_screen_base64() -> Result<String, AppError> {
     image::DynamicImage::ImageRgba8(img)
         .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
         .map_err(|e| AppError::Command(format!("png encode: {e}")))?;
-    Ok(base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &png))
+    Ok(base64::Engine::encode(
+        &base64::engine::general_purpose::STANDARD,
+        &png,
+    ))
 }
 
 #[cfg(test)]
@@ -104,11 +105,9 @@ mod tests {
         // would fail, so treat "no screen" as a valid skip.
         match capture_screen_base64() {
             Ok(b64) => {
-                let bytes = base64::Engine::decode(
-                    &base64::engine::general_purpose::STANDARD,
-                    &b64,
-                )
-                .expect("valid base64");
+                let bytes =
+                    base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &b64)
+                        .expect("valid base64");
                 // PNG magic
                 assert_eq!(&bytes[..8], b"\x89PNG\r\n\x1a\n");
             }

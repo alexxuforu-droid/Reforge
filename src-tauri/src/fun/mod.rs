@@ -153,7 +153,9 @@ pub fn sync_hotkeys(app: &AppHandle, store: &FunStore) {
         if !store.is_enabled(id) {
             continue;
         }
-        let Some(key) = widget_hotkey(store, id) else { continue };
+        let Some(key) = widget_hotkey(store, id) else {
+            continue;
+        };
         let Ok(shortcut) = Shortcut::from_str(&key) else {
             emit(
                 "fun:hotkey-error",
@@ -315,7 +317,13 @@ pub fn fun_save_png(
         .map_err(|e| AppError::Command(format!("invalid image data: {e}")))?;
     let safe_name: String = filename
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || "-_ .()".contains(c) { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || "-_ .()".contains(c) {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     let dir = dirs::download_dir().unwrap_or_else(|| state.data_dir.clone());
     let path = dir.join(if safe_name.to_lowercase().ends_with(".png") {

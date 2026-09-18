@@ -765,7 +765,9 @@ pub fn scan_unused_inner(
                     .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                     .map(|d| d.as_secs())
                     .unwrap_or(0);
-                if let Some(days_old) = unused_age(modified.saturating_mul(1000), now, older_than_days) {
+                if let Some(days_old) =
+                    unused_age(modified.saturating_mul(1000), now, older_than_days)
+                {
                     out.push(UnusedFile {
                         path: p.to_string_lossy().to_string(),
                         size: m.len(),
@@ -804,18 +806,26 @@ pub fn unused_age(modified_ms: u64, now_ms: u64, older_than_days: u64) -> Option
 }
 
 #[tauri::command]
-pub fn scan_unused(
+/// P3-5 — a drive-wide unused-file scan can take minutes; run it off the main
+/// thread (same progress events, same return shape to the frontend) so the UI
+/// never freezes while it walks the disk.
+pub async fn scan_unused(
     app: tauri::AppHandle,
     dir: String,
     older_than_days: u64,
     min_mb: u64,
 ) -> Result<Vec<UnusedFile>, AppError> {
-    scan_unused_inner(&dir, older_than_days, min_mb, |scanned| {
-        let _ = app.emit(
-            "scan-progress",
-            json!({ "scanned": scanned, "total": 0, "scanned_bytes": 0 }),
-        );
+    let app2 = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        scan_unused_inner(&dir, older_than_days, min_mb, |scanned| {
+            let _ = app2.emit(
+                "scan-progress",
+                json!({ "scanned": scanned, "total": 0, "scanned_bytes": 0 }),
+            );
+        })
     })
+    .await
+    .map_err(|e| AppError::Command(format!("scan aborted: {}", e)))?
 }
 
 /// S14.3 — move unused files to the staging trash (undoable). Excluded paths
@@ -879,11 +889,27 @@ mod tests {
         let now = 1_800_000_000_000u64; // arbitrary "now"
         let day = 86400u64 * 1000;
         assert_eq!(unused_age(now, now, 180), None, "fresh file is not unused");
-        assert_eq!(unused_age(now - 179 * day, now, 180), None, "179 days < 180 threshold");
-        assert_eq!(unused_age(now - 180 * day, now, 180), Some(180), "exactly the threshold counts");
+        assert_eq!(
+            unused_age(now - 179 * day, now, 180),
+            None,
+            "179 days < 180 threshold"
+        );
+        assert_eq!(
+            unused_age(now - 180 * day, now, 180),
+            Some(180),
+            "exactly the threshold counts"
+        );
         assert_eq!(unused_age(now - 365 * day, now, 180), Some(365));
-        assert_eq!(unused_age(0, now, 180), None, "unknown mtime never surfaces");
-        assert_eq!(unused_age(now - 400 * day, now, 0), Some(400), "0 threshold still means ≥1 day");
+        assert_eq!(
+            unused_age(0, now, 180),
+            None,
+            "unknown mtime never surfaces"
+        );
+        assert_eq!(
+            unused_age(now - 400 * day, now, 0),
+            Some(400),
+            "0 threshold still means ≥1 day"
+        );
     }
 
     #[test]
@@ -898,7 +924,10 @@ mod tests {
             .write_all(&vec![0u8; 20 * 1024 * 1024])
             .unwrap(); // 20 MB, fresh mtime
         let small = dir.join("small.log");
-        std::fs::File::create(&small).unwrap().write_all(b"tiny").unwrap();
+        std::fs::File::create(&small)
+            .unwrap()
+            .write_all(b"tiny")
+            .unwrap();
 
         // Fresh big + small → nothing qualifies under 180 days / 1 MB (the
         // age DECISION is covered by unused_age_math; the size gate by
@@ -908,7 +937,10 @@ mod tests {
 
         // min_mb=30 excludes the 20 MB file even if old — the size gate holds
         let r3 = scan_unused_inner(dir.to_string_lossy().as_ref(), 180, 30, |_| {}).unwrap();
-        assert!(r3.is_empty(), "size gate must exclude below-threshold files");
+        assert!(
+            r3.is_empty(),
+            "size gate must exclude below-threshold files"
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -917,7 +949,9 @@ mod tests {
     fn delete_unused_stages_to_trash_and_honors_exclusions() {
         let dir = std::env::temp_dir().join(format!("reforge-del-{}", std::process::id()));
         std::fs::create_dir_all(dir.join("keep")).unwrap();
-        let state = crate::state::AppState { data_dir: dir.clone() };
+        let state = crate::state::AppState {
+            data_dir: dir.clone(),
+        };
 
         let doomed = dir.join("doomed.bin");
         std::fs::write(&doomed, vec![0u8; 1024 * 1024]).unwrap();
@@ -933,14 +967,22 @@ mod tests {
 
         let freed = delete_unused_inner(
             &state,
-            vec![doomed.to_string_lossy().to_string(), excluded.to_string_lossy().to_string()],
+            vec![
+                doomed.to_string_lossy().to_string(),
+                excluded.to_string_lossy().to_string(),
+            ],
         )
         .unwrap();
         assert_eq!(freed, 1024 * 1024, "only the doomed file counts");
-        assert!(std::fs::metadata(&excluded).is_ok(), "excluded path must survive");
+        assert!(
+            std::fs::metadata(&excluded).is_ok(),
+            "excluded path must survive"
+        );
         assert!(std::fs::metadata(&doomed).is_err(), "doomed file moved out");
-        assert!(dir.join("trash").join("doomed.bin").exists(), "file must land in the staging trash");
+        assert!(
+            dir.join("trash").join("doomed.bin").exists(),
+            "file must land in the staging trash"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
-
 }

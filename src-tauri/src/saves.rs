@@ -43,7 +43,10 @@ pub fn empty_recycle_bin(state: State<'_, AppState>) -> Result<String, AppError>
         serde_json::json!({ "freed": size, "at": crate::storage::now_millis() }),
         false,
     )?;
-    Ok(format!("Recycle Bin emptied — freed {}", format_bytes(size)))
+    Ok(format!(
+        "Recycle Bin emptied — freed {}",
+        format_bytes(size)
+    ))
 }
 
 #[derive(Serialize, Clone)]
@@ -130,7 +133,9 @@ pub fn big_dupe_groups(_state: State<'_, AppState>, min_mb: u64) -> Vec<BigDupeG
     let mut out = Vec::new();
     for g in &scan.groups {
         // per-group wasted = (n-1) copies of the same file
-        let wasted = g.size.saturating_mul(g.files.len().saturating_sub(1) as u64);
+        let wasted = g
+            .size
+            .saturating_mul(g.files.len().saturating_sub(1) as u64);
         if wasted >= min {
             out.push(BigDupeGroup {
                 id: g.id.clone(),

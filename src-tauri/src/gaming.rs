@@ -56,12 +56,12 @@ use uuid::Uuid;
 #[derive(Serialize, Deserialize, Clone)]
 pub struct GameProfile {
     pub id: String,
-    pub exe: String,        // e.g. "eldenring.exe"
-    pub name: String,       // display name
-    pub game_mode: bool,    // Game Bar AutoGameModeEnabled
-    pub scene_pause: bool,  // freeze the animated wallpaper
-    pub priority: String,   // "normal" | "high"
-    pub overlay: bool,      // stream-safe layout (icons hidden, taskbar autohide)
+    pub exe: String,       // e.g. "eldenring.exe"
+    pub name: String,      // display name
+    pub game_mode: bool,   // Game Bar AutoGameModeEnabled
+    pub scene_pause: bool, // freeze the animated wallpaper
+    pub priority: String,  // "normal" | "high"
+    pub overlay: bool,     // stream-safe layout (icons hidden, taskbar autohide)
 }
 
 impl Default for GameProfile {
@@ -128,7 +128,9 @@ fn save_profiles(state: &AppState, list: &[GameProfile]) -> Result<(), AppError>
 /// = 0x80, NORMAL_PRIORITY_CLASS = 0x20. PID lookup via sysinfo (ToolHelp would
 /// need a new windows-crate feature).
 fn set_process_priority(exe: &str, high: bool) -> Result<(), AppError> {
-    use windows::Win32::System::Threading::{OpenProcess, SetPriorityClass, PROCESS_SET_INFORMATION};
+    use windows::Win32::System::Threading::{
+        OpenProcess, SetPriorityClass, PROCESS_SET_INFORMATION,
+    };
     let mut sys = sysinfo::System::new_all();
     sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
     let target = exe.to_lowercase();
@@ -182,6 +184,11 @@ fn apply_profile_internal(
         if let Some(win) = app.get_webview_window(crate::wallpaper_engine::WALLPAPER_WINDOW_LABEL) {
             let _ = win.eval("window.__setPaused && window.__setPaused(true)");
         }
+        // video wallpaper windows (any monitor placement) pause too
+        crate::wallpaper_video::eval_on_video_windows(
+            app,
+            "window.__setPaused && window.__setPaused(true)",
+        );
     }
     if profile.overlay {
         let key = explorer_key()?;
@@ -229,16 +236,28 @@ pub(crate) fn restore_profile_before(
     state: &AppState,
     before: &serde_json::Value,
 ) -> Result<(), AppError> {
-    let gm = before.get("game_mode").and_then(|v| v.as_bool()).unwrap_or(false);
+    let gm = before
+        .get("game_mode")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     gamebar_key()?.set_value("AutoGameModeEnabled", &(if gm { 1u32 } else { 0u32 }))?;
     gamebar_key()?.set_value("AllowAutoGameMode", &(if gm { 1u32 } else { 0u32 }))?;
-    let frozen = before.get("frozen").and_then(|v| v.as_bool()).unwrap_or(false);
+    let frozen = before
+        .get("frozen")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     let mut eng = crate::wallpaper_engine::load_engine(state);
     eng.frozen = frozen;
     crate::wallpaper_engine::save_engine(state, &eng)?;
     let key = explorer_key()?;
-    let icons = before.get("icons_hidden").and_then(|v| v.as_bool()).unwrap_or(false);
-    let autohide = before.get("taskbar_autohide").and_then(|v| v.as_bool()).unwrap_or(false);
+    let icons = before
+        .get("icons_hidden")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let autohide = before
+        .get("taskbar_autohide")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     key.set_value("HideIcons", &(if icons { 1u32 } else { 0u32 }))?;
     key.set_value("TaskbarAutoHide", &(if autohide { 1u32 } else { 0u32 }))?;
     refresh_shell();
@@ -264,7 +283,8 @@ pub fn spawn_game_watcher(app: tauri::AppHandle, state: AppState) {
                 .values()
                 .map(|p| p.name().to_string_lossy().to_lowercase())
                 .collect();
-            let mut now_running: std::collections::HashSet<String> = std::collections::HashSet::new();
+            let mut now_running: std::collections::HashSet<String> =
+                std::collections::HashSet::new();
             for p in &profiles {
                 let exe = p.exe.to_lowercase();
                 if running.contains(&exe) {

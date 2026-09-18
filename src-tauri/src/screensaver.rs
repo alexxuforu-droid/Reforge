@@ -89,10 +89,7 @@ fn read_registry() -> (bool, u32) {
     };
     let active: String = key.get_value("ScreenSaveActive").unwrap_or_default();
     let timeout: String = key.get_value("ScreenSaveTimeOut").unwrap_or_default();
-    (
-        active == "1",
-        timeout.parse::<u32>().unwrap_or(300).max(1),
-    )
+    (active == "1", timeout.parse::<u32>().unwrap_or(300).max(1))
 }
 
 // ---- html -------------------------------------------------------------------
@@ -190,8 +187,8 @@ fn open_screensaver_window(
     let html = screensaver_html(&scene);
     let file = state.data_dir.join("screensaver.html");
     std::fs::write(&file, html).map_err(|e| AppError::Command(e.to_string()))?;
-    let url = tauri::Url::from_file_path(&file)
-        .map_err(|_| "invalid screensaver url".to_string())?;
+    let url =
+        tauri::Url::from_file_path(&file).map_err(|_| "invalid screensaver url".to_string())?;
 
     let (_, _, w, h) = crate::wallpaper_engine::virtual_screen();
     // Gate the build (webview_gate.rs) — the screensaver can trigger while
@@ -224,9 +221,7 @@ fn open_screensaver_window(
     // Failsafe: if the page's JS can't close the window (e.g. IPC not ready),
     // close it from Rust after the configured timeout + grace — a stuck
     // screensaver is a support ticket.
-    let secs = state
-        .data_dir
-        .join("screensaver.json");
+    let secs = state.data_dir.join("screensaver.json");
     let secs = load_json::<ScreensaverConfig>(&secs, ScreensaverConfig::default())
         .timeout_secs
         .max(1) as u64

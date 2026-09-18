@@ -408,8 +408,6 @@ pub struct FocusSession {
     pub dnd_on: bool,
 }
 
-
-
 fn focus_path(state: &AppState) -> PathBuf {
     state.data_dir.join("focus_session.json")
 }
@@ -425,14 +423,20 @@ fn notifications_key() -> Result<RegKey, AppError> {
 fn toasts_state() -> bool {
     notifications_key()
         .ok()
-        .and_then(|k| k.get_value::<u32, _>("NOC_GLOBAL_SETTING_TOASTS_ENABLED").ok())
+        .and_then(|k| {
+            k.get_value::<u32, _>("NOC_GLOBAL_SETTING_TOASTS_ENABLED")
+                .ok()
+        })
         .map(|v| v == 1)
         .unwrap_or(true)
 }
 
 fn set_toasts(on: bool) -> Result<(), AppError> {
     notifications_key()?
-        .set_value("NOC_GLOBAL_SETTING_TOASTS_ENABLED", &(if on { 1u32 } else { 0u32 }))
+        .set_value(
+            "NOC_GLOBAL_SETTING_TOASTS_ENABLED",
+            &(if on { 1u32 } else { 0u32 }),
+        )
         .map_err(|e| AppError::Command(format!("set toasts: {}", e)))
 }
 
@@ -486,9 +490,13 @@ fn push_focus_tick(app: &tauri::AppHandle, remaining_secs: u64) {
     let _ = app2.run_on_main_thread(move || {
         for label in app3.webview_windows().keys() {
             if label.starts_with("widget-") {
-                let _ = app3
-                    .get_webview_window(label)
-                    .and_then(|w| w.eval(format!("window.__setFocus && window.__setFocus({})", remaining_secs)).ok());
+                let _ = app3.get_webview_window(label).and_then(|w| {
+                    w.eval(format!(
+                        "window.__setFocus && window.__setFocus({})",
+                        remaining_secs
+                    ))
+                    .ok()
+                });
             }
         }
     });

@@ -239,7 +239,15 @@ fn transcode_video_p(
 ) -> Result<(u32, u32), AppError> {
     let ff = ffmpeg_path().ok_or("ffmpeg sidecar not found")?;
     let dim = preset.max_dim();
-    let bufsize = format!("{}k", preset.bitrate().trim_end_matches('k').parse::<u32>().unwrap_or(6000) * 2);
+    let bufsize = format!(
+        "{}k",
+        preset
+            .bitrate()
+            .trim_end_matches('k')
+            .parse::<u32>()
+            .unwrap_or(6000)
+            * 2
+    );
     let mut child = crate::cmd::hidden(ff.to_str().unwrap_or("ffmpeg"))
         .args([
             "-y",
@@ -520,7 +528,11 @@ pub fn probe_dimensions(path: &Path) -> Result<(u32, u32), AppError> {
 
 // ---- GIF normalization (pure Rust via the image crate) ----------------------
 
-pub fn normalize_gif(src: &Path, dst: &Path, preset: TranscodePreset) -> Result<(u32, u32), AppError> {
+pub fn normalize_gif(
+    src: &Path,
+    dst: &Path,
+    preset: TranscodePreset,
+) -> Result<(u32, u32), AppError> {
     let img = image::open(src).map_err(|e| AppError::Command(format!("decode GIF: {}", e)))?;
     let (w, h) = (img.width(), img.height());
     let scale = (preset.max_dim() as f32 / w.max(h) as f32).min(1.0);
@@ -620,7 +632,12 @@ pub fn import_media_p(
                         "Video normalized ({} — {}p cap, {} Mbps max, 30 fps, loop-friendly).",
                         preset.label(),
                         preset.max_dim(),
-                        preset.bitrate().trim_end_matches('k').parse::<u32>().unwrap_or(0) / 1000
+                        preset
+                            .bitrate()
+                            .trim_end_matches('k')
+                            .parse::<u32>()
+                            .unwrap_or(0)
+                            / 1000
                     ),
                 })
             } else {
@@ -764,7 +781,7 @@ mod tests {
         let mut b = Vec::new();
         b.push(0u8); // version 0
         b.extend_from_slice(&[0, 0, 7]); // flags
-        // creation(4) mod(4) track_id(4) reserved(4) duration(4)
+                                         // creation(4) mod(4) track_id(4) reserved(4) duration(4)
         for _ in 0..5 {
             b.extend_from_slice(&0u32.to_be_bytes());
         }
@@ -795,7 +812,8 @@ mod tests {
 
     #[test]
     fn parses_plain_ffmpeg_line() {
-        let line = "    Stream #0:0: Video: h264 (High), yuv420p, 1920x1080 [SAR 1:1 DAR 16:9], 30 fps";
+        let line =
+            "    Stream #0:0: Video: h264 (High), yuv420p, 1920x1080 [SAR 1:1 DAR 16:9], 30 fps";
         assert_eq!(parse_video_dimensions(line), Some((1920, 1080)));
     }
 
@@ -848,7 +866,8 @@ mod tests {
 
     #[test]
     fn mp4_tkhd_v1_probe() {
-        let t = std::env::temp_dir().join(format!("reforge-mp4-probe-v1-{}.mp4", std::process::id()));
+        let t =
+            std::env::temp_dir().join(format!("reforge-mp4-probe-v1-{}.mp4", std::process::id()));
         let mut b = Vec::new();
         b.push(1u8); // version 1
         b.extend_from_slice(&[0, 0, 7]);
@@ -919,4 +938,3 @@ mod tests {
         assert_eq!(back.preset, TranscodePreset::Performance);
     }
 }
-

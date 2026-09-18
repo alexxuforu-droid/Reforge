@@ -688,6 +688,7 @@ pub async fn revert_entry(
                             width: 0,
                             height: 0,
                             name: "restored".into(),
+                            monitor: None,
                         }
                     });
             if !video.path.is_empty() {
@@ -1029,9 +1030,12 @@ mod tests {
 
     impl TestDir {
         fn new() -> Self {
+            use std::sync::atomic::{AtomicU64, Ordering};
+            static SEQ: AtomicU64 = AtomicU64::new(0);
             let path = std::env::temp_dir().join(format!(
-                "reforge-undo-test-{}-{}",
+                "reforge-undo-test-{}-{}-{}",
                 std::process::id(),
+                SEQ.fetch_add(1, Ordering::Relaxed),
                 std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .map(|d| d.as_nanos())
@@ -1076,7 +1080,11 @@ mod tests {
         let entries = vec![
             entry("accent", true, serde_json::json!({ "before": "#6D7CFF" })),
             entry("mode", true, serde_json::json!({ "before": "dark" })),
-            entry("wallpaper", false, serde_json::json!({ "before": "", "after": "C:\\a.jpg" })),
+            entry(
+                "wallpaper",
+                false,
+                serde_json::json!({ "before": "", "after": "C:\\a.jpg" }),
+            ),
         ];
         save_undo(&t.state(), &entries).unwrap();
 
@@ -1093,6 +1101,42 @@ mod tests {
         assert!(load_undo(&t.state()).is_empty());
     }
 
+    /// P3-9 — log_entry caps the log at 200 so undo_log.json can't grow
+    /// unbounded; the newest entries survive and the oldest are dropped.
+    #[test]
+    fn undo_log_caps_at_200_entries_dropping_oldest() {
+        let t = TestDir::new();
+        for i in 0..250 {
+            log_entry(
+                &t.state(),
+                "accent",
+                format!("entry {}", i),
+                serde_json::json!({ "n": i }),
+                true,
+            )
+            .unwrap();
+        }
+        let back = load_undo(&t.state());
+        assert_eq!(back.len(), 200);
+        // newest survives
+        assert_eq!(
+            back.last().map(|e| e.description.as_str()),
+            Some("entry 249")
+        );
+        // oldest dropped
+        assert!(back.iter().all(|e| e.description != "entry 0"));
+        // cap still holds after more writes
+        log_entry(
+            &t.state(),
+            "mode",
+            "entry 250".into(),
+            serde_json::json!({}),
+            true,
+        )
+        .unwrap();
+        assert_eq!(load_undo(&t.state()).len(), 200);
+    }
+
     /// S4.4 — revert-coverage guard: every canonical revertible kind's payload
     /// must survive the undo-log persistence layer that revert_entry reads
     /// from, so a revert arm always sees the data it was written with.
@@ -1103,18 +1147,39 @@ mod tests {
             ("accent", serde_json::json!({ "before": "#123456" })),
             ("mode", serde_json::json!({ "before": "light" })),
             ("transparency", serde_json::json!({ "before": false })),
-            ("wallpaper", serde_json::json!({ "before": "C:\\old.jpg", "after": "C:\\new.jpg" })),
-            ("style_applied", serde_json::json!({ "before": { "accent": "#000000" }, "style_id": "wp-x" })),
-            ("animated_wallpaper", serde_json::json!({ "static_wallpaper": "C:\\s.jpg" })),
+            (
+                "wallpaper",
+                serde_json::json!({ "before": "C:\\old.jpg", "after": "C:\\new.jpg" }),
+            ),
+            (
+                "style_applied",
+                serde_json::json!({ "before": { "accent": "#000000" }, "style_id": "wp-x" }),
+            ),
+            (
+                "animated_wallpaper",
+                serde_json::json!({ "static_wallpaper": "C:\\s.jpg" }),
+            ),
             ("video", serde_json::json!({ "before": "C:\\v.mp4" })),
-            ("startup_disable", serde_json::json!({ "name": "BadApp.exe", "location": "HKLM" })),
-            ("duplicates_removed", serde_json::json!({ "paths": ["C:\\d1.jpg", "C:\\d2.jpg"] })),
+            (
+                "startup_disable",
+                serde_json::json!({ "name": "BadApp.exe", "location": "HKLM" }),
+            ),
+            (
+                "duplicates_removed",
+                serde_json::json!({ "paths": ["C:\\d1.jpg", "C:\\d2.jpg"] }),
+            ),
             ("sort", serde_json::json!({ "before": "name" })),
             ("cursors", serde_json::json!({ "before": "default" })),
             ("power_plan", serde_json::json!({ "before": "balanced" })),
             ("blue_light", serde_json::json!({ "before": true })),
-            ("marketplace_apply", serde_json::json!({ "pack_id": "pack-1" })),
-            ("display_profile", serde_json::json!({ "before": "default" })),
+            (
+                "marketplace_apply",
+                serde_json::json!({ "pack_id": "pack-1" }),
+            ),
+            (
+                "display_profile",
+                serde_json::json!({ "before": "default" }),
+            ),
         ];
         let entries: Vec<UndoEntry> = kinds
             .iter()
@@ -1127,7 +1192,10 @@ mod tests {
         for (i, (k, d)) in kinds.iter().enumerate() {
             assert_eq!(back[i].kind, *k);
             assert!(back[i].revertible);
-            assert_eq!(back[i].data, *d, "payload for kind {k} must survive round-trip");
+            assert_eq!(
+                back[i].data, *d,
+                "payload for kind {k} must survive round-trip"
+            );
         }
     }
 }

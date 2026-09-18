@@ -44,9 +44,15 @@ impl RestorePlan {
 /// restore plan. Scene + video only count when the engine was left `active`
 /// (a stopped engine must not resurrect itself on reboot).
 pub fn plan_restore(data_dir: &Path) -> RestorePlan {
-    let eng: EngineState = load_json(&data_dir.join("wallpaper_engine.json"), EngineState::default());
+    let eng: EngineState = load_json(
+        &data_dir.join("wallpaper_engine.json"),
+        EngineState::default(),
+    );
     let widgets: Vec<WidgetConfig> = load_json(&data_dir.join("widgets.json"), Vec::new());
-    let auto: AutomationConfig = load_json(&data_dir.join("automation.json"), AutomationConfig::default());
+    let auto: AutomationConfig = load_json(
+        &data_dir.join("automation.json"),
+        AutomationConfig::default(),
+    );
     RestorePlan {
         scene: if eng.active { eng.scene } else { None },
         video: if eng.active { eng.media } else { None },
@@ -125,6 +131,7 @@ mod tests {
             width: 1920,
             height: 1080,
             name: "aurora".into(),
+            monitor: None,
         }
     }
 
@@ -175,11 +182,23 @@ mod tests {
         };
         crate::storage::save_json(&dir.join("automation.json"), &auto).unwrap();
 
-        crate::storage::save_json(&dir.join("widgets.json"), &vec![widget(true), widget(false)]).unwrap();
+        crate::storage::save_json(
+            &dir.join("widgets.json"),
+            &vec![widget(true), widget(false)],
+        )
+        .unwrap();
 
         let plan = plan_restore(&dir);
-        assert_eq!(plan.scene.as_ref().unwrap().id, "aurora", "scene consumed from engine state");
-        assert_eq!(plan.video.as_ref().unwrap().name, "aurora", "video consumed from engine state");
+        assert_eq!(
+            plan.scene.as_ref().unwrap().id,
+            "aurora",
+            "scene consumed from engine state"
+        );
+        assert_eq!(
+            plan.video.as_ref().unwrap().name,
+            "aurora",
+            "video consumed from engine state"
+        );
         assert_eq!(plan.widgets.len(), 1, "only visible widgets restore");
         assert!(plan.blue_light_on);
         assert_eq!(plan.blue_light_intensity, 0.42);

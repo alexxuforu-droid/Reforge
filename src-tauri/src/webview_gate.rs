@@ -33,9 +33,11 @@ static QUEUE: Mutex<VecDeque<Box<dyn FnOnce() + Send>>> = Mutex::new(VecDeque::n
 /// that only need "accepted" semantics can treat `None` as success.
 pub fn run<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> Option<T> {
     if IN_CREATION.with(|c| c.get()) {
+        // P3-3 — a poisoned lock must never wedge the gate (this is the
+        // deadlock-avoidance layer); recover the value instead of panicking.
         QUEUE
             .lock()
-            .unwrap()
+            .unwrap_or_else(|e| e.into_inner())
             .push_back(Box::new(move || {
                 let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
             }));
@@ -67,7 +69,7 @@ fn run_inner<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> Optio
 /// order.
 fn drain() {
     loop {
-        let next = QUEUE.lock().unwrap().pop_front();
+        let next = QUEUE.lock().unwrap_or_else(|e| e.into_inner()).pop_front();
         match next {
             Some(item) => {
                 let _ = run_inner(item);
@@ -101,10 +103,7 @@ mod tests {
         });
         assert_eq!(outer, Some("done"));
         // The queue is drained by the outermost run — in FIFO order.
-        assert_eq!(
-            *order.lock().unwrap(),
-            vec!["outer", "inner1", "inner2"]
-        );
+        assert_eq!(*order.lock().unwrap(), vec!["outer", "inner1", "inner2"]);
     }
 
     #[test]

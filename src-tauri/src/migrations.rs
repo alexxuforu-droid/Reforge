@@ -58,7 +58,13 @@ fn migrate_v0_to_v1(state: &AppState) {
 
 /// The stamped schema version (0 when the file is absent).
 pub fn current_version(state: &AppState) -> u32 {
-    load_json(&state.data_dir.join(VERSION_FILE), SchemaVersion { version: UNVERSIONED }).version
+    load_json(
+        &state.data_dir.join(VERSION_FILE),
+        SchemaVersion {
+            version: UNVERSIONED,
+        },
+    )
+    .version
 }
 
 /// Run every pending migration in order and stamp the result. Idempotent:
@@ -76,7 +82,10 @@ pub fn run_migrations(state: &AppState) -> Result<u32, AppError> {
     while (v as usize) < MIGRATIONS.len() {
         MIGRATIONS[v as usize](state);
         v += 1;
-        save_json(&state.data_dir.join(VERSION_FILE), &SchemaVersion { version: v })?;
+        save_json(
+            &state.data_dir.join(VERSION_FILE),
+            &SchemaVersion { version: v },
+        )?;
     }
     Ok(v)
 }
@@ -124,8 +133,10 @@ mod tests {
         assert_eq!(current_version(&state(&dir)), CURRENT_SCHEMA_VERSION);
 
         // the backfill landed: created_at is now set (first-run grace anchor)
-        let cfg: crate::automation::AutomationConfig =
-            load_json(&dir.join("automation.json"), crate::automation::AutomationConfig::default());
+        let cfg: crate::automation::AutomationConfig = load_json(
+            &dir.join("automation.json"),
+            crate::automation::AutomationConfig::default(),
+        );
         assert!(cfg.created_at > 0, "created_at backfilled by v1 migration");
         assert!(cfg.weekly_junk, "existing fields preserved");
     }

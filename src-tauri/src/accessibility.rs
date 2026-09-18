@@ -90,7 +90,7 @@ fn animations_state() -> bool {
 fn set_animations(off: bool) -> Result<(), AppError> {
     unsafe {
         use windows::Win32::UI::WindowsAndMessaging::{
-            SystemParametersInfoW, SPI_SETCLIENTAREAANIMATION, SPIF_SENDCHANGE,
+            SystemParametersInfoW, SPIF_SENDCHANGE, SPI_SETCLIENTAREAANIMATION,
         };
         SystemParametersInfoW(
             SPI_SETCLIENTAREAANIMATION,
@@ -292,7 +292,13 @@ mod tests {
 
     #[test]
     fn cursor_size_clamps_to_allowed_values() {
-        assert_eq!(match 32 { 32 | 48 | 64 => 32, _ => 32 }, 32);
+        assert_eq!(
+            match 32 {
+                32 | 48 | 64 => 32,
+                _ => 32,
+            },
+            32
+        );
         let ok = |s: u32| match s {
             32 | 48 | 64 => s,
             _ => 32,
