@@ -10,7 +10,7 @@ use tauri::State;
 use walkdir::WalkDir;
 
 use crate::error::AppError;
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct DuplicateGroup {
     pub id: String,
     pub name: String,
@@ -18,7 +18,7 @@ pub struct DuplicateGroup {
     pub files: Vec<DuplicateFile>,
 }
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct DuplicateFile {
     pub path: String,
     pub modified: u64,
@@ -360,4 +360,73 @@ pub fn restore_moved(state: &AppState, moved: &[MovedFile]) -> Result<(), AppErr
     }
     let _ = state;
     Ok(())
+}
+
+/// D2 — one-click duplicate auto-resolution. The rule picks ONE survivor per
+/// group; everything else is a removal candidate for the existing
+/// `remove_duplicates` (staging trash, one undo entry). Pure metadata logic:
+/// no filesystem access, so untestable states can't arise here.
+#[derive(Deserialize, Clone)]
+pub enum ResolveRule {
+    Newest,
+    Oldest,
+    InFolder { folder: String },
+}
+
+pub fn pick_removals(group: &DuplicateGroup, rule: &ResolveRule) -> Result<Vec<String>, AppError> {
+    if group.files.len() < 2 {
+        return Ok(vec![]);
+    }
+    let survivor = match rule {
+        ResolveRule::Newest => group.files.iter().max_by_key(|f| f.modified),
+        ResolveRule::Oldest => group.files.iter().min_by_key(|f| f.modified),
+        ResolveRule::InFolder { folder } => group
+            .files
+            .iter()
+            .find(|f| f.path.starts_with(folder.as_str())),
+    }
+    .ok_or_else(|| AppError::Invalid("No survivor matched the rule.".into()))?;
+    Ok(group
+        .files
+        .iter()
+        .filter(|f| f.path != survivor.path)
+        .map(|f| f.path.clone())
+        .collect())
+}
+
+#[tauri::command]
+pub fn resolve_duplicate_group(
+    group: DuplicateGroup,
+    rule: ResolveRule,
+) -> Result<Vec<String>, AppError> {
+    pick_removals(&group, &rule)
+}
+
+#[cfg(test)]
+mod resolve_tests {
+    use super::*;
+
+    fn group() -> DuplicateGroup {
+        DuplicateGroup {
+            id: "g".into(),
+            name: "t".into(),
+            size: 0,
+            files: vec![
+                DuplicateFile {
+                    path: r"C:\a\old.txt".into(),
+                    modified: 1000,
+                },
+                DuplicateFile {
+                    path: r"C:\b\new.txt".into(),
+                    modified: 2000,
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn keep_newest_removes_all_but_latest() {
+        let remove = pick_removals(&group(), &ResolveRule::Newest).unwrap();
+        assert_eq!(remove, vec![r"C:\a\old.txt".to_string()]);
+    }
 }

@@ -431,6 +431,7 @@ pub fn run() {
             // duplicates
             duplicates::scan_duplicates,
             duplicates::remove_duplicates,
+            duplicates::resolve_duplicate_group,
             duplicates::empty_trash,
             duplicates::trash_size,
             // organize
