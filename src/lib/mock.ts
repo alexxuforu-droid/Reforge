@@ -2184,7 +2184,7 @@ async function mockCallInner<T>(cmd: string, args: Record<string, unknown> = {})
       if (s.mockUpdateResult) return { ...s.mockUpdateResult } as T;
       return {
         state: "error",
-        current: "0.1.0",
+        current: "1.0.0",
         latest: null,
         url: null,
         sha256: null,

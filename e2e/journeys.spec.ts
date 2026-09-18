@@ -116,14 +116,14 @@ test("pack share code round-trips from export to import", async ({ page }) => {
 test("update check surfaces an available update and downloads it verified", async ({ page }) => {
   await openApp(page, {
     mockUpdateResult: {
-      state: "update-available", current: "0.1.0", latest: "0.2.0",
-      url: "https://reforge.app/releases/0.2.0.exe", sha256: "abc123",
+      state: "update-available", current: "1.0.0", latest: "1.1.0",
+      url: "https://reforge.app/releases/1.1.0.exe", sha256: "abc123",
       notes: ["New looks"], message: "",
     },
   });
   await navigate(page, "Settings");
   await page.getByRole("button", { name: "Check for updates", exact: true }).click();
-  await expect(page.getByText("Reforge 0.2.0 is available (you're on 0.1.0)", { exact: true })).toBeVisible();
+  await expect(page.getByText("Reforge 1.1.0 is available (you're on 1.0.0)", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Download", exact: true }).click();
   await expect(page.getByText(/Verified · ready to install/)).toBeVisible();
 });

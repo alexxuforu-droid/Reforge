@@ -392,7 +392,7 @@ export default function App() {
           </button>
           <div className="mt-1 flex items-center gap-2 px-4 py-1.5 text-xs text-[var(--text-tertiary)]">
             <span className={`h-1.5 w-1.5 rounded-full ${IS_TAURI ? "bg-[var(--status-success)]" : "bg-[var(--status-warning)]"}`} />
-            {IS_TAURI ? "Live" : "Preview"} · Reforge v0.1.0
+            {IS_TAURI ? "Live" : "Preview"} · Reforge v1.0.0
           </div>
         </div>
       </aside>

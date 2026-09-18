@@ -11,17 +11,16 @@ Built with **Tauri 2 + Rust + React + TypeScript + Tailwind**.
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL-3.0-blue.svg)](LICENSE)
 [![GitHub Release](https://img.shields.io/github/v/release/vasilescualex07-droid/Reforge)](https://github.com/vasilescualex07-droid/Reforge/releases)
 
-> **Status (2026-08-16):** the app is feature-complete for its first release —
-> **17 sections, 263 backend commands**, 116 Rust tests, 35 frontend test files.
-> `v0.1.0` is tagged and the release pipeline is ready to produce the first
-> public build. Releases are **unsigned by decision** — Windows may show
+> **Status (2026-09-18):** v1.0.0 — **17 sections, 255 backend commands**,
+> 144 Rust tests, 10 browser journeys green, three locales (en/es/de).
+> Releases are **unsigned by decision** — Windows may show
 > "Unknown publisher" on first run; that's expected and never pretended away.
 > Trust builds through SmartScreen download reputation over time (see
 > `docs/DELIVERY.md` §1).
 
 ## Download & install
 
-Grab the latest installer (e.g. `Reforge_0.1.0_x64-setup.exe`) from the
+Grab the latest installer (e.g. `Reforge_1.0.0_x64-setup.exe`) from the
 [Releases page](https://github.com/vasilescualex07-droid/Reforge/releases) — a
 per-user install, no admin rights needed. In-app, Settings → "Check for updates"
 polls the same channel and installs newer versions silently (sha256-verified,

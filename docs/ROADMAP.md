@@ -1,6 +1,7 @@
 # ═══════════════════════════════════════════════════════════════════════════════
 #   REFORGE — THE MASTER ROADMAP
-#   Version 2.0 · consolidated from the full audit + all completed plan docs · 2026-08-22
+#   Version 2.1 · v1.0.0 shipped 2026-09-18 (see CHANGELOG.md); Part C phases
+#   S/M/P/X now recorded below with their outcomes · consolidated 2026-08-22
 # ═══════════════════════════════════════════════════════════════════════════════
 #
 #   Reforge is a Windows app that gives your PC a "spa day": restyle how it

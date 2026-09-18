@@ -48,7 +48,7 @@ export async function openApp(page: Page, seed?: Record<string, unknown>) {
     }, seed);
   }
   await page.goto("/");
-  await expect(page.getByText("Preview · Reforge v0.1.0", { exact: true })).toBeVisible();
+  await expect(page.getByText("Preview · Reforge v1.0.0", { exact: true })).toBeVisible();
   expect(await page.evaluate(() => "__TAURI_INTERNALS__" in window)).toBe(false);
   await expect.poll(async () => (await state(page))?.theme).toBeTruthy();
 }

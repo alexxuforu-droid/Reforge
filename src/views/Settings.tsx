@@ -68,7 +68,7 @@ export default function Settings() {
   // P2-9 — per-zone static colors (zone index → hex).
   const [zoneIndex, setZoneIndex] = useState(0);
   const [zoneColors, setZoneColors] = useState<Record<number, string>>({});
-  const [appVersion, setAppVersion] = useState("0.1.0");
+  const [appVersion, setAppVersion] = useState("1.0.0");
   const [buildInfo, setBuildInfo] = useState<BuildInfo | null>(null);
 
   // S8.8 — transcode preset (video import quality/size budget).
