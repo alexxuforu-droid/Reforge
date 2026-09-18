@@ -142,3 +142,12 @@ exe, sha256-verified, NSIS-installed silently) — accepted for now.
 | Theme trio generator (P-2) | **Deferred, cut freely** | Content-generation work; capture covers everything today. Reuse the desktop-mock preview canvas if ever built. |
 | MSIX packaging | **Declined** unless enterprise demand appears | NSIS per-user installer covers the audience; no Store requirement exists. |
 | Cloud backup (X-5) | **Declined** — local-first default stands | Profile + undo history stay on-device; encrypted user-owned-folder sync may be reconsidered only on explicit demand. |
+
+---
+
+## 6. 2026-09-18 security + perf re-verification (X-8/X-9)
+
+- **unwrap sweep: clean.** Every `.unwrap()`/`.expect()` in `src-tauri/src` lives in `#[cfg(test)]` modules, except three justified constants: `"127.0.0.1:6742".parse().unwrap()` (`capability.rs`, constant literal), process-entry `.expect()` in `run()`/`run_screensaver_app()` (`lib.rs`, abort-with-context by design), and the `about:blank` fallback parse (`splash.rs`, constant).
+- **shell sweep: clean with two fixes landed.** All PowerShell scripts are fixed constants; Wi-Fi/VPN names pass `validate_profile_name` as single argv elements (VPN gap closed in `network.rs`); threat IDs are validated u64 (`security_center.rs`); elevation path is single-quote-escaped (`capability.rs::ps_single_quote`); pack importer keeps extension + content-sniff + size caps (`marketplace.rs::validate_pack_security`); updater downloads are sha256-verified (`updater.rs::verify_download`).
+- **startup handoff: 2ms measured, 8000ms budget — budget unchanged.** The 2ms figure is deferred-startup from the on-disk log (2026-08-16); a true cold-start number needs a headed machine, so no tightening without that measurement.
+- **Rust gate at audit time:** `cargo fmt --check` clean · `cargo clippy --all-targets -- -D warnings` clean · `cargo test` 144/144 green.
