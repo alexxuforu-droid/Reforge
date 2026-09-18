@@ -46,10 +46,13 @@ pub fn apply_mica(app: &tauri::AppHandle) {
 }
 
 mod accessibility;
+
+mod applooks;
 mod automation;
 mod capability;
 mod cleanup;
 mod cmd;
+mod contextmenu;
 mod cursors;
 mod dashboard;
 mod displays;
@@ -128,11 +131,57 @@ fn cli_help_text() -> String {
          Usage: reforge [option]\n\
          \u{20} --version, -v   print the version and exit\n\
          \u{20} --help, -h      show this help and exit\n\
+         \u{20} --view <name>   open directly on a view (dashboard, makeover, styles, marketplace, ...)\n\
          \u{20} /s              run as screensaver (used by the Windows idle timeout)\n\
          No option opens the Reforge window.\n\
          Config + state live in %APPDATA%\\com.reforge.app (see Settings → Advanced).",
         env!("CARGO_PKG_VERSION")
     )
+}
+
+/// D1 — `--view <name>` deep-link flag (used by the desktop right-click
+/// verbs). Pure + allowlisted: unknown views yield None and the app opens
+/// normally. Takes the full argv slice because the flag consumes a value.
+fn parse_view_flag(args: &[String]) -> Option<String> {
+    const VIEWS: &[&str] = &[
+        "dashboard",
+        "makeover",
+        "styles",
+        "marketplace",
+        "performance",
+        "tuneup",
+        "organize",
+        "security",
+        "history",
+        "settings",
+        "productivity",
+        "displays",
+        "network",
+        "gaming",
+        "power",
+        "accessibility",
+        "widgets",
+    ];
+    let mut iter = args.iter();
+    while let Some(a) = iter.next() {
+        if a == "--view" {
+            if let Some(v) = iter.next() {
+                if VIEWS.contains(&v.as_str()) {
+                    return Some(v.clone());
+                }
+            }
+            return None;
+        }
+    }
+    None
+}
+
+/// One-shot launch view, consumed by the frontend at startup.
+pub struct LaunchView(pub std::sync::Mutex<Option<String>>);
+
+#[tauri::command]
+fn take_launch_view(state: tauri::State<'_, LaunchView>) -> Option<String> {
+    state.0.lock().ok()?.take()
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -211,6 +260,10 @@ pub fn run() {
             app.manage(state_managed);
             // RGB restore-on-exit: session tracking for touched devices (M-2)
             app.manage(rgb::RgbSession::default());
+            // D1 — deep-link view from `--view` (context-menu verbs); the
+            // frontend consumes it once at startup via take_launch_view.
+            let argv: Vec<String> = std::env::args().skip(1).collect();
+            app.manage(LaunchView(std::sync::Mutex::new(parse_view_flag(&argv))));
             let handle = app.handle().clone();
             // F-B: Mica window material behind the content pane
             apply_mica(&handle);
@@ -276,6 +329,13 @@ pub fn run() {
                     data_dir: dir.clone(),
                 },
             );
+            // D1 — per-app looks: apply a pack when its app starts
+            applooks::spawn_app_look_watcher(
+                handle.clone(),
+                AppState {
+                    data_dir: dir.clone(),
+                },
+            );
             // S11 — automation threads: blue-light schedule (time-based ramp),
             // scheduled style applies, and due-maintenance (weekly junk /
             // monthly dupes with first-run grace + failure notifications).
@@ -328,6 +388,9 @@ pub fn run() {
             // capability
             capability::get_capability_matrix,
             capability::request_elevation,
+            contextmenu::install_context_menu,
+            contextmenu::remove_context_menu,
+            take_launch_view,
             // theme
             theme::get_theme_state,
             theme::set_accent_color,
@@ -376,6 +439,8 @@ pub fn run() {
             gaming::save_game_profile,
             gaming::delete_game_profile,
             gaming::apply_game_profile,
+            applooks::list_app_look_rules,
+            applooks::set_app_look_rules,
             productivity::start_focus_session,
             productivity::stop_focus_session,
             productivity::get_focus_session,
@@ -714,8 +779,19 @@ mod cli_tests {
     #[test]
     fn help_text_names_every_flag() {
         let h = cli_help_text();
-        for token in ["--version", "--help", "/s", "%APPDATA%"] {
+        for token in ["--version", "--help", "--view", "/s", "%APPDATA%"] {
             assert!(h.contains(token), "help missing {token}");
         }
+    }
+
+    #[test]
+    fn view_flag_accepts_only_known_views() {
+        let v = |a: &[&str]| parse_view_flag(&a.iter().map(|s| s.to_string()).collect::<Vec<_>>());
+        assert_eq!(v(&["--view", "makeover"]).as_deref(), Some("makeover"));
+        assert_eq!(v(&["--view", "styles"]).as_deref(), Some("styles"));
+        assert_eq!(v(&["--view", "evil"]), None);
+        assert_eq!(v(&["--view"]), None);
+        assert_eq!(v(&[]), None);
+        assert_eq!(v(&["--version"]), None);
     }
 }
