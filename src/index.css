@@ -757,7 +757,6 @@ textarea:focus-visible {
   .magnet-label:hover {
     transform: translate(1px, -1px);
   }
-}
   /* Spotlight — accent-tinted light following the cursor inside cards. Only on
      fine pointers with motion allowed; keyboard focus gets a border glow
      instead so the affordance exists without a pointer. */
