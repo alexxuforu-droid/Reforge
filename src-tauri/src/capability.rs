@@ -187,6 +187,14 @@ pub fn get_capability_matrix() -> CapabilityMatrix {
     compute()
 }
 
+/// X-9 — PowerShell single-quoted string escaping: a literal `'` inside the
+/// value would terminate the quoting and inject script. Doubling is the
+/// documented PowerShell escape. The exe path comes from the OS, not the
+/// user — this closes the pattern, not an open hole.
+fn ps_single_quote(s: &str) -> String {
+    s.replace('\'', "''")
+}
+
 #[tauri::command]
 pub fn request_elevation() -> Result<String, AppError> {
     // Relaunch ourselves with a UAC prompt. Only the app triggers the OS prompt.
@@ -197,7 +205,7 @@ pub fn request_elevation() -> Result<String, AppError> {
             "-Command",
             &format!(
                 "Start-Process -FilePath '{}' -Verb RunAs",
-                exe.to_string_lossy()
+                ps_single_quote(&exe.to_string_lossy())
             ),
         ])
         .output()
@@ -229,5 +237,21 @@ mod tests {
         let is_win11 = 26200 >= 22000;
         let supported = !is_win11;
         assert!(!supported);
+    }
+
+    #[test]
+    fn ps_single_quote_doubles_quotes() {
+        assert_eq!(
+            ps_single_quote("C:\\plain\\path.exe"),
+            "C:\\plain\\path.exe"
+        );
+        assert_eq!(
+            ps_single_quote("C:\\o'hara\\app.exe"),
+            "C:\\o''hara\\app.exe"
+        );
+        assert_eq!(
+            ps_single_quote("'; Remove-Item C:\\ -Recurse -Force; '"),
+            "''; Remove-Item C:\\ -Recurse -Force; ''"
+        );
     }
 }
