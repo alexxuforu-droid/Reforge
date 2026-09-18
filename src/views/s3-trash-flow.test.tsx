@@ -76,6 +76,22 @@ function handleCall(cmd: string, args: Record<string, unknown> = {}): unknown {
     }
     case "trash_size":
       return backend.trashSize;
+    case "resolve_duplicate_group": {
+      // Mirrors duplicates::pick_removals survivor rules for the test backend.
+      const group = (args.group ?? {}) as { files?: { path: string; modified: number }[] };
+      const rule = args.rule as string | { folder: string };
+      const files = group.files ?? [];
+      if (files.length < 2) return [];
+      const ruleName = typeof rule === "string" ? rule : "InFolder";
+      const folder = typeof rule === "object" ? (rule.folder as string) : "";
+      const survivor = ruleName === "Newest"
+        ? files.reduce((a, b) => (b.modified > a.modified ? b : a))
+        : ruleName === "Oldest"
+          ? files.reduce((a, b) => (b.modified < a.modified ? b : a))
+          : files.find((f) => f.path.startsWith(folder));
+      if (!survivor) throw new Error("No survivor matched the rule.");
+      return files.filter((f) => f.path !== survivor.path).map((f) => f.path);
+    }
     case "empty_trash": {
       backend.trashSize = 0;
       backend.undo.unshift({
@@ -159,5 +175,22 @@ describe("S3.8 duplicate-trash flow", () => {
     await waitFor(() => expect(screen.queryByRole("button", { name: /empty trash/i })).not.toBeInTheDocument(), {
       timeout: 5000,
     });
+  });
+
+  it("auto-resolve keeps one survivor per group and moves the rest to trash", async () => {
+    render(<Organize />);
+    fireEvent.click(screen.getByRole("button", { name: "Duplicates" }));
+    fireEvent.click(await screen.findByRole("button", { name: /scan/i }, { timeout: 5000 }));
+    await waitFor(() => expect(screen.getByText("photo.jpg")).toBeInTheDocument(), { timeout: 5000 });
+
+    fireEvent.click(screen.getByRole("button", { name: /auto-resolve all/i }));
+    await waitFor(() => {
+      const e = backend.undo.find((u) => u.kind === "duplicates_removed");
+      expect(e).toBeTruthy();
+      expect(e!.description).toContain("2 duplicate files");
+    }, { timeout: 5000 });
+    const resolveCalls = callMock.mock.calls.filter((c) => c[0] === "resolve_duplicate_group");
+    expect(resolveCalls).toHaveLength(2);
+    await waitFor(() => expect(screen.queryByText("photo.jpg")).not.toBeInTheDocument(), { timeout: 5000 });
   });
 });

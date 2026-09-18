@@ -118,6 +118,8 @@
   "analytics.monthly": "Monthly · last 6 months",
   "analytics.away": "Latest change: {desc} ({age}).",
   "organize.smartFolder.hitCount": "{count} file{plural}",
+  "dashboard.risk": "Risk score",
+  "dashboard.risk.sub": "{startup} startup apps · {flags} flagged items · Defender {defender}",
 
   "settings.advanced": "Advanced",
   "settings.advanced.subtitle": "Every config file Reforge owns — back them up or hand-edit them (the app re-reads on launch)",
@@ -150,5 +152,11 @@
   "power.hibernate.desc": "Writes RAM to disk — uses a hibernation file",
   "power.hibernate.admin": "Toggling needs administrator rights.",
   "power.noBattery": "No battery detected — desktop power settings still apply.",
-  "power.planChanged": "Power plan changed"
+  "power.planChanged": "Power plan changed",
+  "organize.duplicates.rule": "Auto-resolve rule",
+  "organize.duplicates.keepNewest": "Keep newest",
+  "organize.duplicates.keepOldest": "Keep oldest",
+  "organize.duplicates.autoResolve": "Auto-resolve all",
+  "organize.duplicates.resolving": "Resolving…",
+  "organize.duplicates.nothingToResolve": "Every group already has a single survivor."
 }

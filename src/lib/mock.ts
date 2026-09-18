@@ -813,6 +813,22 @@ async function mockCallInner<T>(cmd: string, args: Record<string, unknown> = {})
       });
       return `Moved ${n} files to staging trash (reversible)` as T;
     }
+    case "resolve_duplicate_group": {
+      // D2 — mirrors duplicates::pick_removals survivor rules for preview.
+      const group = args.group as { files: { path: string; modified: number }[] };
+      const rule = args.rule as string | { folder: string };
+      const files = group.files ?? [];
+      if (files.length < 2) return [] as T;
+      const ruleName = typeof rule === "string" ? rule : "InFolder";
+      const folder = typeof rule === "object" ? (rule.folder as string) : "";
+      const survivor = ruleName === "Newest"
+        ? files.reduce((a, b) => (b.modified > a.modified ? b : a))
+        : ruleName === "Oldest"
+          ? files.reduce((a, b) => (b.modified < a.modified ? b : a))
+          : files.find((f) => f.path.startsWith(folder));
+      if (!survivor) throw new Error("No survivor matched the rule.");
+      return files.filter((f) => f.path !== survivor.path).map((f) => f.path) as T;
+    }
     case "empty_trash":
       pushUndo("trash_emptied", "Permanently deleted staged duplicates", false, { freed: store.stagingTrashBytes });
       store.stagingTrashBytes = 0;

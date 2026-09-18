@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { call, fmt, fmtAge } from "../lib/api";
 import { bucketByDay, bucketByMonth } from "../lib/trends";
+import { riskScore } from "../lib/risk";
 import { useLoad } from "../lib/useLoad";
 import { useI18n } from "../i18n";
 import type { DashboardMetrics, HealthScore, SystemInfo, UndoEntry } from "../lib/types";
@@ -28,6 +29,13 @@ export default function Dashboard({ onNavigate = () => {} }: { onNavigate?: (v: 
   const { data: recent, error: recentError } = useLoad<UndoEntry[]>("get_undo_log");
   // P1-8 — one-call security digest from the Security Center.
   const { data: digest } = useLoad<SecurityDigest>("security_get_digest");
+  // D4 — risk score inputs: flagged autorun entries (already suspicious items).
+  const { data: flagged } = useLoad<{ flags: string[] }[]>("security_audit_autorun_threat_surface");
+  const risk = useMemo(() => riskScore({
+    startup: health?.startup_count ?? 0,
+    autorunFlags: (flagged ?? []).length,
+    defenderOn: digest ? digest.overall === "healthy" || digest.overall === "attention" : true,
+  }), [health, flagged, digest]);
   const [resumeAge, setResumeAge] = useState<number | null>(null);
 
   useEffect(() => {
@@ -178,6 +186,23 @@ export default function Dashboard({ onNavigate = () => {} }: { onNavigate?: (v: 
               digest?.overall === "healthy"
                 ? "var(--status-success)"
                 : digest?.overall === "attention"
+                  ? "var(--status-warning)"
+                  : "var(--status-danger)"
+            }
+            icon={<IconShieldCheck size={14} />}
+          />
+          <StatCard
+            label={t("dashboard.risk")}
+            value={health && digest ? `${risk.score}` : "…"}
+            sub={t("dashboard.risk.sub", {
+              startup: health?.startup_count ?? 0,
+              flags: (flagged ?? []).length,
+              defender: digest ? digest.overall : "…",
+            })}
+            accent={
+              risk.level === "low"
+                ? "var(--status-success)"
+                : risk.level === "medium"
                   ? "var(--status-warning)"
                   : "var(--status-danger)"
             }

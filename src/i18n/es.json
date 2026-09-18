@@ -118,6 +118,8 @@
   "analytics.monthly": "Mensual · últimos 6 meses",
   "analytics.away": "Último cambio: {desc} ({age}).",
   "organize.smartFolder.hitCount": "{count} archivo{plural}",
+  "dashboard.risk": "Riesgo",
+  "dashboard.risk.sub": "{startup} apps de inicio · {flags} elementos marcados · Defender {defender}",
 
   "settings.advanced": "Avanzado",
   "settings.advanced.subtitle": "Cada archivo de configuración de Reforge — respáldalos o edítalos a mano (la app los relee al abrir)",
@@ -150,5 +152,11 @@
   "power.hibernate.desc": "Escribe la RAM en disco — usa un archivo de hibernación",
   "power.hibernate.admin": "Cambiarlo requiere derechos de administrador.",
   "power.noBattery": "Sin batería detectada — los ajustes de energía de escritorio siguen aplicando.",
-  "power.planChanged": "Plan de energía cambiado"
+  "power.planChanged": "Plan de energía cambiado",
+  "organize.duplicates.rule": "Regla de resolución automática",
+  "organize.duplicates.keepNewest": "Conservar el más nuevo",
+  "organize.duplicates.keepOldest": "Conservar el más antiguo",
+  "organize.duplicates.autoResolve": "Resolver todo",
+  "organize.duplicates.resolving": "Resolviendo…",
+  "organize.duplicates.nothingToResolve": "Cada grupo ya tiene un único superviviente."
 }

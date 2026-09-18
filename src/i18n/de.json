@@ -118,6 +118,8 @@
   "analytics.monthly": "Monatlich · letzte 6 Monate",
   "analytics.away": "Letzte Änderung: {desc} ({age}).",
   "organize.smartFolder.hitCount": "{count} Datei{plural}",
+  "dashboard.risk": "Risiko",
+  "dashboard.risk.sub": "{startup} Autostart-Apps · {flags} markierte Einträge · Defender {defender}",
 
   "settings.advanced": "Erweitert",
   "settings.advanced.subtitle": "Alle Konfigurationsdateien von Reforge – sichern oder manuell bearbeiten (die App liest sie beim Start neu)",
@@ -150,5 +152,11 @@
   "power.hibernate.desc": "Schreibt RAM auf Disk — nutzt eine Ruhezustandsdatei",
   "power.hibernate.admin": "Umschalten braucht Administratorrechte.",
   "power.noBattery": "Kein Akku erkannt — Desktop-Energieeinstellungen gelten trotzdem.",
-  "power.planChanged": "Energiesparplan geändert"
+  "power.planChanged": "Energiesparplan geändert",
+  "organize.duplicates.rule": "Auto-Regel",
+  "organize.duplicates.keepNewest": "Neuestes behalten",
+  "organize.duplicates.keepOldest": "Ältestes behalten",
+  "organize.duplicates.autoResolve": "Alle automatisch auflösen",
+  "organize.duplicates.resolving": "Wird aufgelöst …",
+  "organize.duplicates.nothingToResolve": "Jede Gruppe hat bereits genau einen Überlebenden."
 }

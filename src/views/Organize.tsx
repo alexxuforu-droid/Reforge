@@ -272,6 +272,37 @@ export default function Organize() {
     }
   };
 
+  // D2 — one-click auto-resolution: each group keeps one survivor per the
+  // rule; everything else goes through the same remove_duplicates path
+  // (staging trash, one undo entry).
+  const [resolveRule, setResolveRule] = useState<"Newest" | "Oldest">("Newest");
+  const [resolving, setResolving] = useState(false);
+
+  const autoResolveDups = async () => {
+    if (!dupScan || resolving) return;
+    setResolving(true);
+    try {
+      const paths: string[] = [];
+      for (const g of dupScan.groups) {
+        const doomed = await call<string[]>("resolve_duplicate_group", { group: g, rule: resolveRule });
+        paths.push(...doomed);
+      }
+      if (paths.length === 0) {
+        toast(t("organize.duplicates.nothingToResolve"));
+        return;
+      }
+      const msg = await call<string>("remove_duplicates", { paths });
+      toast(msg);
+      setDupScan(null);
+      setSelectedDups(new Set());
+      refreshTrash();
+    } catch (e) {
+      toast(errorCopy(e), "err");
+    } finally {
+      setResolving(false);
+    }
+  };
+
   const removeDups = async () => {
     if (!dupScan) return;
     const paths = dupScan.groups
@@ -738,9 +769,23 @@ export default function Organize() {
                   <strong className="text-[var(--text-primary)]">{fmt(dupScan.total_wasted)}</strong> wasted across{" "}
                   {dupScan.groups.length} groups
                 </span>
-                <button className="btn-primary text-xs" onClick={() => setRemoveOpen(true)} disabled={selectedDups.size === 0}>
-                  Remove selected
-                </button>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={resolveRule}
+                    onChange={(e) => setResolveRule(e.target.value as "Newest" | "Oldest")}
+                    aria-label={t("organize.duplicates.rule")}
+                    className="h-8 rounded-[4px] border border-[#8A8A8A] bg-[var(--surface-base)] px-2 text-xs text-[var(--text-primary)]"
+                  >
+                    <option value="Newest">{t("organize.duplicates.keepNewest")}</option>
+                    <option value="Oldest">{t("organize.duplicates.keepOldest")}</option>
+                  </select>
+                  <button className="btn-ghost text-xs" onClick={autoResolveDups} disabled={resolving}>
+                    {resolving ? t("organize.duplicates.resolving") : t("organize.duplicates.autoResolve")}
+                  </button>
+                  <button className="btn-primary text-xs" onClick={() => setRemoveOpen(true)} disabled={selectedDups.size === 0}>
+                    Remove selected
+                  </button>
+                </div>
               </div>
               <div className="space-y-2">
                 {dupScan.groups.map((g) => (
