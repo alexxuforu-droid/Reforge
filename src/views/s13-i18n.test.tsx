@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, waitFor } from "@testing-library/react";
 import en from "../i18n/en.json";
 import es from "../i18n/es.json";
+import de from "../i18n/de.json";
 
 const STORE_KEY = "reforge-mock-v1";
 
@@ -28,11 +29,44 @@ describe("S13.5 i18n catalogs", () => {
     expect(Object.keys(es).sort()).toEqual(Object.keys(en).sort());
   });
 
+  it("de.json has full key parity with en.json (third locale)", () => {
+    expect(Object.keys(de).sort()).toEqual(Object.keys(en).sort());
+  });
+
   it("es values are real translations (only proper nouns / code terms stay English)", () => {
     const identical = Object.keys(en).filter((k) => es[k as keyof typeof es] === en[k as keyof typeof en]);
     // Marketplace/Widgets (borrowed nouns), Tauri (brand), commit (code term)
     // legitimately stay English — nothing else may.
     expect(identical.sort()).toEqual(["nav.marketplace", "nav.widgets", "settings.about.commit", "settings.about.native"].sort());
+  });
+
+  it("de values are real translations (only borrowed nouns / brands stay English)", () => {
+    const identical = Object.keys(en).filter((k) => de[k as keyof typeof de] === en[k as keyof typeof en]);
+    // Makeover/Marketplace/Widgets/Dashboard/Navigation/Updates/Version (identical
+    // words in German), Tauri (brand) legitimately stay English — nothing else may.
+    expect(identical.sort()).toEqual(["nav.dashboard", "nav.makeover", "nav.marketplace", "nav.widgets", "palette.navigation", "settings.about.native", "settings.about.version", "settings.updates"].sort());
+  });
+
+  it("switching to Deutsch in Settings flips labels", { timeout: 120_000 }, async () => {
+    await reloadedMock();
+    const i18n = await import("../i18n");
+    const { default: Settings } = await import("./Settings");
+    const { container } = render(
+      <i18n.I18nProvider>
+        <Settings />
+      </i18n.I18nProvider>,
+    );
+    await waitFor(() => expect(container.textContent).toContain("Automation"), { timeout: 8000 });
+
+    const select = container.querySelector('select[aria-label="Language"]') as HTMLSelectElement;
+    expect(select).not.toBeNull();
+
+    fireEvent.change(select, { target: { value: "de" } });
+    await waitFor(() => expect(container.textContent).toContain("Automatisierung"), { timeout: 8000 });
+    expect(container.textContent).toContain("Über Reforge");
+
+    fireEvent.change(select, { target: { value: "en" } });
+    await waitFor(() => expect(container.textContent).toContain("Automation"), { timeout: 8000 });
   });
 
   it("t() interpolates {vars} and falls back to the key for unknown strings", async () => {

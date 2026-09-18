@@ -10,12 +10,13 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
 import en from "./en.json";
 import es from "./es.json";
+import de from "./de.json";
 
-export type Lang = "en" | "es";
-export const LANGS: Lang[] = ["en", "es"];
-export const LANG_NAMES: Record<Lang, string> = { en: "English", es: "Español" };
+export type Lang = "en" | "es" | "de";
+export const LANGS: Lang[] = ["en", "es", "de"];
+export const LANG_NAMES: Record<Lang, string> = { en: "English", es: "Español", de: "Deutsch" };
 
-const DICTS: Record<Lang, Record<string, string>> = { en, es };
+const DICTS: Record<Lang, Record<string, string>> = { en, es, de };
 const STORAGE_KEY = "reforge-lang";
 
 export type TFunc = (key: string, vars?: Record<string, string | number>) => string;
