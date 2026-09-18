@@ -117,3 +117,29 @@ describe("S10.6 focus sessions", () => {
     expect(s.active).toBe(false);
   });
 });
+
+describe("D1 per-app looks", () => {
+  it("adds and deletes an exe-to-pack rule through the mock", { timeout: 60_000 }, async () => {
+    const { container } = render(<Gaming />);
+    await waitFor(() => expect(container.textContent).toContain("Per-app looks"), { timeout: 8000 });
+    const exeInput = container.querySelector<HTMLInputElement>('input[aria-label="App executable, e.g. game.exe"]')!;
+    await act(async () => { fireEvent.change(exeInput, { target: { value: "game.exe" } }); });
+    await waitFor(() => expect(container.querySelector('option[value="studio-blue"]')).not.toBeNull(), { timeout: 8000 });
+    const packSelect = container.querySelector<HTMLSelectElement>('select[aria-label="Look pack"]')!;
+    await act(async () => { fireEvent.change(packSelect, { target: { value: "studio-blue" } }); });
+    await act(async () => {
+      fireEvent.click(Array.from(container.querySelectorAll("button")).find((b) => b.textContent?.includes("Add rule"))!);
+    });
+    await sleep(500);
+    let rules = await mockCall<{ exe: string; look_id: string }[]>("list_app_look_rules", {});
+    expect(rules).toEqual([{ exe: "game.exe", look_id: "studio-blue" }]);
+    expect(container.textContent).toContain("game.exe");
+
+    await act(async () => {
+      fireEvent.click(container.querySelector<HTMLElement>("button[title='Delete rule for']")!);
+    });
+    await sleep(500);
+    rules = await mockCall<{ exe: string; look_id: string }[]>("list_app_look_rules", {});
+    expect(rules).toEqual([]);
+  });
+});

@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { errorCopy, call, swallow } from "../lib/api";
 import { useLoad } from "../lib/useLoad";
+import { useI18n } from "../i18n";
 import { applyStyleDef } from "../lib/styleApply";
 import { ALL_STYLES, getStyle } from "../styles";
-import type { GameProfile, PerfSnapshot, StreamLayoutState } from "../lib/types";
+import type { AppLookRule, BundleInfo, GameProfile, PerfSnapshot, StreamLayoutState } from "../lib/types";
 import { InlineAlert, Section, StatusDot, Toggle, toast } from "../components/ui";
 import { fmtUptime } from "../components/charts";
 import { IconGamepad, IconCpu, IconHardDrive, IconMonitor, IconBattery, IconGauge, IconPlus, IconTrash } from "../components/icons";
@@ -12,6 +13,7 @@ import { IconGamepad, IconCpu, IconHardDrive, IconMonitor, IconBattery, IconGaug
 const FOCUSED_DARK_STYLE = ALL_STYLES.find((s) => s.mood === "focused" && s.mode === "dark");
 
 export default function Gaming() {
+  const { t } = useI18n();
   // S2.2 — toggles load through useLoad: real error surface, one toast per
   // command per session on first failure.
   const { data: gameMode, error: gameModeError, refresh: refreshGameMode } = useLoad<boolean>("get_game_mode");
@@ -76,9 +78,29 @@ export default function Gaming() {
       .catch((e) => toast(errorCopy(e), "err"));
   };
 
+  // ---- D1 per-app looks ----
+  const { data: appLooks, error: appLooksError, refresh: refreshAppLooks } = useLoad<AppLookRule[]>("list_app_look_rules");
+  const { data: lookBundles } = useLoad<BundleInfo[]>("marketplace_list_bundles");
+  const [newLookExe, setNewLookExe] = useState("");
+  const [newLookId, setNewLookId] = useState("");
+
+  const saveAppLook = () => {
+    if (!newLookExe.trim() || !newLookId) return;
+    const next = [...(appLooks ?? []).filter((r) => r.exe.toLowerCase() !== newLookExe.trim().toLowerCase()), { exe: newLookExe.trim(), look_id: newLookId }];
+    call<string>("set_app_look_rules", { rules: next })
+      .then((m) => { toast(m); refreshAppLooks(); setNewLookExe(""); })
+      .catch((e) => toast(errorCopy(e), "err"));
+  };
+
+  const deleteAppLook = (exe: string) => {
+    const next = (appLooks ?? []).filter((r) => r.exe.toLowerCase() !== exe.toLowerCase());
+    call<string>("set_app_look_rules", { rules: next })
+      .then((m) => { toast(m); refreshAppLooks(); })
+      .catch((e) => toast(errorCopy(e), "err"));
+  };
+
   // ---- S10.3 per-game profiles ----
-  const { data: profiles, error: profilesError, refresh: refreshProfiles } = useLoad<GameProfile[]>("list_game_profiles");
-  const [newProfile, setNewProfile] = useState<GameProfile>({
+  const { data: profiles, error: profilesError, refresh: refreshProfiles } = useLoad<GameProfile[]>("list_game_profiles");  const [newProfile, setNewProfile] = useState<GameProfile>({
     id: "", exe: "", name: "", game_mode: true, scene_pause: true, priority: "normal", overlay: false,
   });
 
@@ -244,6 +266,49 @@ export default function Gaming() {
                 </div>
                 <button className="btn-ghost text-2xs" onClick={() => applyProfile(p)}>Apply now</button>
                 <button title="Delete profile" className="text-[var(--text-tertiary)] hover:text-[var(--status-danger)]" onClick={() => deleteProfile(p.id)}><IconTrash size={13} /></button>
+              </div>
+            ))}
+          </div>
+        )}
+      </Section>
+
+      {/* D1 — per-app looks: apply a pack when its app starts */}
+      <Section title={t("gaming.applooks")} subtitle={t("gaming.applooks.subtitle")}>
+        {appLooksError && <InlineAlert>{appLooksError}</InlineAlert>}
+        <div className="mb-3 flex flex-wrap gap-2">
+          <input
+            className="input min-w-0 flex-1"
+            placeholder={t("gaming.applooks.exe")}
+            value={newLookExe}
+            onChange={(e) => setNewLookExe(e.target.value)}
+            aria-label={t("gaming.applooks.exe")}
+          />
+          <select
+            className="input min-w-0 flex-1"
+            value={newLookId}
+            onChange={(e) => setNewLookId(e.target.value)}
+            aria-label={t("gaming.applooks.look")}
+          >
+            <option value="">{t("gaming.applooks.pick")}</option>
+            {(lookBundles ?? []).map((b) => (
+              <option key={b.id} value={b.id}>{b.name}</option>
+            ))}
+          </select>
+          <button className="btn-primary shrink-0" onClick={saveAppLook} disabled={!newLookExe.trim() || !newLookId}>
+            <IconPlus size={12} /> {t("gaming.applooks.add")}
+          </button>
+        </div>
+        {(appLooks ?? []).length === 0 ? (
+          <div className="empty-state">{t("gaming.applooks.empty")}</div>
+        ) : (
+          <div className="space-y-2">
+            {(appLooks ?? []).map((r) => (
+              <div key={r.exe} className="flex items-center gap-3 rounded-lg border border-[var(--border-default)] bg-[var(--surface-overlay)] px-3 py-2">
+                <div className="flex-1">
+                  <div className="text-xs font-medium text-[var(--text-primary)]">{r.exe}</div>
+                  <div className="text-2xs text-[var(--text-tertiary)]">→ {(lookBundles ?? []).find((b) => b.id === r.look_id)?.name ?? r.look_id}</div>
+                </div>
+                <button title={t("gaming.applooks.delete")} aria-label={`${t("gaming.applooks.delete")} ${r.exe}`} className="text-[var(--text-tertiary)] hover:text-[var(--status-danger)]" onClick={() => deleteAppLook(r.exe)}><IconTrash size={13} /></button>
               </div>
             ))}
           </div>

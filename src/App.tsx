@@ -1,5 +1,5 @@
 import { Component, lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
-import { IS_TAURI, call, onEvent, swallow } from "./lib/api";
+import { IS_TAURI, call, errorCopy, onEvent, swallow } from "./lib/api";
 import { useI18n } from "./i18n";
 import { applyThemeToDom, THEME_CHANGED_EVENT } from "./lib/theme-dom";
 import { fireAction } from "./lib/events";
@@ -148,6 +148,15 @@ export default function App() {
     return () => window.removeEventListener(THEME_CHANGED_EVENT, onThemeChanged);
   }, []);
   const [view, setView] = useState<View>("dashboard");
+  // D1 — `--view <name>` deep link (desktop right-click verbs): consume the
+  // one-shot launch view once at startup. Unknown/absent views open normally.
+  useEffect(() => {
+    call<string | null>("take_launch_view")
+      .then((v) => {
+        if (typeof v === "string" && (NAV.some((n) => n.id === v) || v === "widgets")) setView(v as View);
+      })
+      .catch(swallow);
+  }, []);
   // S9.5 — a stats-widget row click tells the main app to open a view.
   // Tauri: the Rust `widget-nav` event; preview: the mock dispatches the same
   // payload as a `reforge:widget-nav` CustomEvent.
@@ -246,6 +255,8 @@ export default function App() {
       { id: "scan-junk", label: t("palette.scanJunk"), hint: t("palette.scanJunk.hint"), cat: t("palette.actions"), Icon: NavTuneup },
       { id: "take-snapshot", label: t("palette.takeSnapshot"), hint: t("palette.takeSnapshot.hint"), cat: t("palette.actions"), Icon: NavHistory },
       { id: "export-profile", label: t("palette.exportProfile"), hint: t("palette.exportProfile.hint"), cat: t("palette.actions"), Icon: NavSettings },
+      { id: "install-verbs", label: t("palette.installVerbs"), hint: t("palette.installVerbs.hint"), cat: t("palette.actions"), Icon: NavSettings },
+      { id: "remove-verbs", label: t("palette.removeVerbs"), hint: t("palette.removeVerbs.hint"), cat: t("palette.actions"), Icon: NavSettings },
     ];
     const all = [...navItems, ...extras];
     const q = query.trim().toLowerCase();
@@ -263,6 +274,8 @@ export default function App() {
       case "scan-junk": setView("tuneup"); toast("Scanning for junk…", "info"); fireAction("scan-junk"); break;
       case "take-snapshot": setView("history"); toast("Taking a snapshot…", "info"); fireAction("take-snapshot"); break;
       case "export-profile": setView("settings"); toast("Exporting profile…", "info"); fireAction("export-profile"); break;
+      case "install-verbs": call<string>("install_context_menu").then((m) => toast(m)).catch((e) => toast(errorCopy(e), "err")); break;
+      case "remove-verbs": call<string>("remove_context_menu").then((m) => toast(m)).catch((e) => toast(errorCopy(e), "err")); break;
       default: setView(item.id as View);
     }
   };

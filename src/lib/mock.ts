@@ -204,6 +204,7 @@ const store = {
   screensaverPreviewedAt: 0 as number,
   widgetsSettings: { autohide_fullscreen: true } as WidgetsSettings,
   gameProfiles: [] as GameProfile[],
+  appLooks: [] as { exe: string; look_id: string }[],
   power: {
     battery: { percent: 84, on_ac: true, charging: true },
     battery_health: { health_pct: 91, design_mwh: 46800, full_mwh: 42500, cycle_count: 213 },
@@ -1373,6 +1374,12 @@ async function mockCallInner<T>(cmd: string, args: Record<string, unknown> = {})
       s.gameProfiles = s.gameProfiles.filter((x) => x.id !== args.id);
       return null as T;
     }
+    case "list_app_look_rules":
+      return s.appLooks.map((r) => ({ ...r })) as T;
+    case "set_app_look_rules": {
+      s.appLooks = ((args.rules ?? []) as { exe: string; look_id: string }[]).map((r) => ({ ...r }));
+      return `Saved ${s.appLooks.length} per-app look rule${s.appLooks.length === 1 ? "" : "s"}.` as T;
+    }
     case "apply_game_profile": {
       pushUndo("game_profile", `Applied ${(args.profile as GameProfile).name} profile`, true, { before: { game_mode: true, frozen: false, icons_hidden: false, taskbar_autohide: false } });
       return `${(args.profile as GameProfile).name} profile applied` as T;
@@ -2233,6 +2240,15 @@ async function mockCallInner<T>(cmd: string, args: Record<string, unknown> = {})
       s.stagedUpdate = null; // reset the stage too, so tests start clean
       return null as T;
     }
+    case "take_launch_view":
+      // D1 — browser preview never launches with --view; always open normally.
+      return null as T;
+    case "install_context_menu":
+      pushUndo("context_menu_added", "Added Reforge verbs to the desktop right-click menu", true, {});
+      return "Desktop right-click verbs installed — revert anytime from History." as T;
+    case "remove_context_menu":
+      pushUndo("context_menu_removed", "Removed Reforge verbs from the desktop right-click menu", true, {});
+      return "Desktop right-click verbs removed." as T;
     default:
       throw new Error(`no mock for command: ${cmd}`);
   }

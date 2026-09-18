@@ -774,6 +774,12 @@ export interface RegistryValue {
   kind: string;
 }
 
+// D1 — per-app looks (applooks::list/set_app_look_rules).
+export interface AppLookRule {
+  exe: string;
+  look_id: string;
+}
+
 // ---- Shell / taskbar ----
 
 export interface TaskbarState {
