@@ -181,13 +181,13 @@ in-app updater on a test machine; the local git remote URL is current.
 
 ### The work
 
-| # | Item | What / why | Size |
-|---|---|---|---|
-| S-1 | Run the release workflow end-to-end | Trigger from the existing `v0.1.0` tag (or re-tag); verify exe + NSIS + MSI + `latest.json` + portable zip land as a draft release. First full exercise of `.github/workflows/release.yml`. | 🟠 |
-| S-2 | Publish the draft | Owner's manual gate. Landing page (`site/index.html` + `pages.yml`) goes live the moment a published release exists — Settings → Pages → Source: GitHub Actions. | 🟢 |
-| S-3 | Prove the in-app update loop live | Bump a test version above the published one; confirm check → download → sha256 verify → stage → silent NSIS install works from the live channel. Every future release depends on this path. | 🟠 |
-| S-4 | Refresh the local git remote | `git remote set-url origin https://github.com/vasilescualex07-droid/Reforge.git` (still says `Reforged`; GitHub redirects today but the stale name confuses audits). | 🟢 |
-| S-5 | Post-release smoke on a clean account | Fresh install → shortcut present → launch → apply a look → revert → uninstall clean. The Universal Standard release gate. | 🟢 |
+| # | Item | What / why | Size | Status 2026-09-18 |
+|---|---|---|---|---|
+| S-1 | Run the release workflow end-to-end | Trigger from the existing `v0.1.0` tag (or re-tag); verify exe + NSIS + MSI + `latest.json` + portable zip land as a draft release. First full exercise of `.github/workflows/release.yml`. | 🟠 | **Triggered** — `v1.0.0` tag pushed; draft artifacts pending the workflow run |
+| S-2 | Publish the draft | Owner's manual gate. Landing page (`site/index.html` + `pages.yml`) goes live the moment a published release exists — Settings → Pages → Source: GitHub Actions. | 🟢 | **Owner gate open** |
+| S-3 | Prove the in-app update loop live | Bump a test version above the published one; confirm check → download → sha256 verify → stage → silent NSIS install works from the live channel. Every future release depends on this path. | 🟠 | **Owner gate open** (needs a test machine) |
+| S-4 | Refresh the local git remote | `git remote set-url origin https://github.com/vasilescualex07-droid/Reforge.git` (still says `Reforged`; GitHub redirects today but the stale name confuses audits). | 🟢 | **Done** — remote is `https://github.com/alexxuforu-droid/Reforge.git` (repo moved; updater default manifest URL moved with it) |
+| S-5 | Post-release smoke on a clean account | Fresh install → shortcut present → launch → apply a look → revert → uninstall clean. The Universal Standard release gate. | 🟢 | **Owner gate open** |
 
 ---
 
