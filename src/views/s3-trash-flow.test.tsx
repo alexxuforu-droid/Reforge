@@ -11,13 +11,14 @@ import Organize from "./Organize";
 import type { DuplicateScan } from "../lib/types";
 
 const callMock = vi.hoisted(() => vi.fn());
-const callWithTimeoutMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../lib/api")>();
   return {
     call: callMock,
-    callWithTimeout: callWithTimeoutMock,
+    // The timeout wrapper is transparent to the flow under test — delegate
+    // straight to the call mock so long-running scans behave identically.
+    callWithTimeout: (cmd: string, args?: Record<string, unknown>) => callMock(cmd, args),
     IS_TAURI: false,
     errorCopy: (e: unknown) => (e instanceof Error ? e.message : String(e)),
     swallow: () => {},
@@ -93,8 +94,6 @@ beforeEach(() => {
   backend.trashSize = 0;
   backend.undo.length = 0;
   callMock.mockReset();
-  callWithTimeoutMock.mockReset();
-  callWithTimeoutMock.mockResolvedValue(null);
   callMock.mockImplementation(async (cmd: string, args?: Record<string, unknown>) => handleCall(cmd, args));
 });
 

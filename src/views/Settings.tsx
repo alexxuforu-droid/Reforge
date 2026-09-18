@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { errorCopy, call, fmt, fmtAge, IS_TAURI, swallow } from "../lib/api";
 import { useLoad } from "../lib/useLoad";
 import { getVersion } from "@tauri-apps/api/app";
-import type { AutomationConfig, BuildInfo, CapabilityMatrix, MaintenanceRun, ProfileExport, StagedUpdate, StorageConfig, StyleScheduleEntry, SystemInfo, TranscodeConfig, UpdateCheck, UpdateConfig } from "../lib/types";
-import { InlineAlert, PageHeader, Section, SettingRow, StatusDot, Toggle, toast } from "../components/ui";
+import type { AutomationConfig, BuildInfo, BundleInfo, CapabilityMatrix, MaintenanceRun, ProfileExport, StagedUpdate, StorageConfig, StyleScheduleEntry, SystemInfo, TranscodeConfig, UpdateCheck, UpdateConfig } from "../lib/types";
+import { InlineAlert, PageHeader, Section, Select, SettingRow, StatusDot, Toggle, toast } from "../components/ui";
 import { onAction } from "../lib/events";
 import { ALL_STYLES } from "../styles";
 import { buildStyleApplyPayload } from "../lib/styleApply";
@@ -28,6 +28,10 @@ export default function Settings() {
   const [styleSchedule, setStyleSchedule] = useState<StyleScheduleEntry[]>([]);
   const [pickStyleId, setPickStyleId] = useState("");
   const [pickTime, setPickTime] = useState("18:00");
+  // P5-7 — scheduled pack rotation (same wall-clock scheduler, pack target).
+  const { data: installedBundles, refresh: refreshBundles } = useLoad<BundleInfo[]>("marketplace_list_bundles");
+  const [pickPackId, setPickPackId] = useState("");
+  const [pickPackTime, setPickPackTime] = useState("08:00");
   // S11.6 — due-maintenance dashboard.
   const [runningMaintenance, setRunningMaintenance] = useState(false);
 
@@ -56,6 +60,9 @@ export default function Settings() {
   const [rgb, setRgb] = useState<RGBState | null>(null);
   const [deviceIndex, setDeviceIndex] = useState(0);
   const [rgbColor, setRgbColor] = useState("#6D7CFF");
+  // P2-9 — per-zone static colors (zone index → hex).
+  const [zoneIndex, setZoneIndex] = useState(0);
+  const [zoneColors, setZoneColors] = useState<Record<number, string>>({});
   const [appVersion, setAppVersion] = useState("0.1.0");
   const [buildInfo, setBuildInfo] = useState<BuildInfo | null>(null);
 
@@ -66,6 +73,8 @@ export default function Settings() {
   // surfaces in their sections, one toast per command per session.
   const { data: sys, error: sysError } = useLoad<SystemInfo>("get_system_info");
   const { data: caps, error: capsError } = useLoad<CapabilityMatrix>("get_capability_matrix");
+  // P1-11 — welcome-back splash config (splash.rs).
+  const { data: splash, error: splashError, refresh: refreshSplash } = useLoad<SplashConfig>("get_splash_config");
   // Automation drives the toggles below, so its failure must not silently
   // show all toggles off. useLoad + an InlineAlert on the section.
   const { data: automation, error: automationError, refresh: refreshAutomation } = useLoad<AutomationConfig>("get_automation_config");
@@ -213,9 +222,30 @@ export default function Settings() {
     }
   };
 
+  // P3-7 — local-first diagnostics bundle: writes a log+info file to Downloads.
+  const bundleDiagnostics = async () => {
+    try {
+      const p = await call<string>("bundle_diagnostics");
+      toast(`Diagnostics saved to ${p}`);
+    } catch (e) {
+      toast(errorCopy(e), "err");
+    }
+  };
+
   const restoreRgb = async () => {
     try {
       const msg = await call<string>("rgb_restore_current_mode", { device_index: deviceIndex });
+      toast(msg);
+    } catch (e) {
+      toast(errorCopy(e), "err");
+    }
+  };
+
+  // P2-9 — per-zone static color (OpenRGB REQUEST_UPDATE_ZONE_LEDS).
+  const applyZoneColor = async () => {
+    try {
+      const hex = zoneColors[zoneIndex] ?? rgbColor;
+      const msg = await call<string>("rgb_set_zone_static", { device_index: deviceIndex, zone_index: zoneIndex, hex });
       toast(msg);
     } catch (e) {
       toast(errorCopy(e), "err");
@@ -284,6 +314,28 @@ export default function Settings() {
     const next = styleSchedule.map((e) => (e.id === id ? { ...e, ...patch } : e));
     setStyleSchedule(next);
     updateAutomation({ style_schedule: next });
+  };
+
+  // P5-7 — schedule an installed pack instead of a catalog style.
+  const addScheduledPack = async () => {
+    const b = (installedBundles ?? []).find((x) => x.id === pickPackId);
+    if (!b) return;
+    const entry: StyleScheduleEntry = {
+      id: `sched-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+      time: pickPackTime,
+      style_id: "pack",
+      name: b.name,
+      payload: { id: "pack", name: b.name },
+      bundle_id: b.id,
+      bundle_name: b.name,
+      last_fired_day: "",
+    };
+    const next = [...styleSchedule, entry];
+    setStyleSchedule(next);
+    updateAutomation({ style_schedule: next });
+    setPickPackId("");
+    refreshBundles();
+    toast(`Pack "${b.name}" scheduled for ${pickPackTime}`);
   };
 
   const removeScheduledStyle = (id: string) => {
@@ -393,8 +445,85 @@ export default function Settings() {
               <span className="ml-2 text-[var(--status-warning)]">{caps.elevation_required_reason}</span>
             )}
           </p>
+          {/* P1-10 — elevation: one honest "relaunch as admin" prompt instead of
+              confusing per-action "Access denied" errors for HKLM operations. */}
+          {!caps.admin && (
+            <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] px-3 py-2">
+              <span className="min-w-0 flex-1 text-xs text-[var(--status-warning)]">
+                Some features (font swapping, lock-screen customization) need administrator rights. Relaunching with admin lets them work.
+              </span>
+              <button
+                className="btn-ghost shrink-0 text-xs"
+                onClick={() =>
+                  call("request_elevation")
+                    .then((r: any) => toast(r))
+                    .catch((e) => toast(errorCopy(e), "err"))
+                }
+              >
+                Relaunch as administrator
+              </button>
+            </div>
+          )}
         </Section>
       )}
+
+      {/* P1-11 — Startup & splash */}
+      <Section bare title="Startup & splash" subtitle="Welcome-back splash window and launch-at-login">
+        {splashError && <InlineAlert>{splashError}</InlineAlert>}
+        <SettingRow
+          title="Show welcome splash on launch"
+          description="A brief 'Welcome back' window over the desktop after login — off by default, so it never reads as a broken boot."
+          control={
+            <Toggle
+              on={splash?.enabled ?? false}
+              onChange={(v) =>
+                call<SplashConfig>("set_splash_config", {
+                  config: { enabled: v, timeout_secs: splash?.timeout_secs ?? 6, launch_at_login: splash?.launch_at_login ?? false },
+                })
+                  .then(() => { refreshSplash(); toast(v ? "Splash enabled" : "Splash disabled"); })
+                  .catch((e) => toast(errorCopy(e), "err"))
+              }
+            />
+          }
+        />
+        <SettingRow
+          title="Splash duration"
+          description="How long the splash stays up before auto-dismissing."
+          control={
+            <Select
+              ariaLabel="Splash duration"
+              value={String(splash?.timeout_secs ?? 6)}
+              onChange={(v) =>
+                call<SplashConfig>("set_splash_config", {
+                  config: { enabled: splash?.enabled ?? false, timeout_secs: Number(v), launch_at_login: splash?.launch_at_login ?? false },
+                })
+                  .then(() => { refreshSplash(); })
+                  .catch((e) => toast(errorCopy(e), "err"))
+              }
+              options={[
+                { value: "4", label: "4 seconds" },
+                { value: "6", label: "6 seconds" },
+                { value: "10", label: "10 seconds" },
+                { value: "15", label: "15 seconds" },
+              ]}
+            />
+          }
+        />
+        <SettingRow
+          title="Launch Reforge at login"
+          description="Start Reforge (and its splash, if enabled) when you sign in to Windows."
+          control={
+            <Toggle
+              on={splash?.launch_at_login ?? false}
+              onChange={(v) =>
+                call<boolean>("set_splash_login_launch", { on: v })
+                  .then(() => { refreshSplash(); toast(v ? "Reforge will launch at login" : "Reforge won't launch at login"); })
+                  .catch((e) => toast(errorCopy(e), "err"))
+              }
+            />
+          }
+        />
+      </Section>
 
       {/* Automation */}
       <Section bare title={t("settings.automation")} subtitle={t("settings.automation.subtitle")}>
@@ -554,6 +683,35 @@ export default function Settings() {
               <IconPlus size={13} /> Schedule
             </button>
           </div>
+          {/* P5-7 — pack rotation: schedule an installed pack instead of a style. */}
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <select
+              value={pickPackId}
+              onChange={(e) => setPickPackId(e.target.value)}
+              className="h-8 max-w-64 rounded-[4px] border border-[#8A8A8A] bg-[var(--surface-base)] px-2 text-sm text-[var(--text-primary)]"
+              aria-label="Pack to schedule"
+            >
+              <option value="">Schedule a pack…</option>
+              {(installedBundles ?? []).map((b) => (
+                <option key={b.id} value={b.id}>{b.name}</option>
+              ))}
+            </select>
+            <input
+              type="time"
+              value={pickPackTime}
+              onChange={(e) => setPickPackTime(e.target.value)}
+              className="input w-32"
+              aria-label="Scheduled pack time"
+            />
+            <button className="btn-ghost btn-sm" onClick={addScheduledPack} disabled={!pickPackId}>
+              <IconPlus size={13} /> Schedule pack
+            </button>
+          </div>
+          {(installedBundles ?? []).length === 0 && (
+            <p className="text-2xs text-[var(--text-tertiary)]">
+              No packs installed — capture or import one in Pack Marketplace to schedule a rotating look.
+            </p>
+          )}
         </div>
       </Section>
 
@@ -642,7 +800,7 @@ export default function Settings() {
               title="Device"
               description="Choose which controller to control"
               control={
-                <select value={deviceIndex} onChange={(e) => setDeviceIndex(+e.target.value)}>
+                <select value={deviceIndex} onChange={(e) => { setDeviceIndex(+e.target.value); setZoneIndex(0); }}>
                   {rgb.devices.map((d) => (
                     <option key={d.index} value={d.index}>{d.name}</option>
                   ))}
@@ -669,6 +827,29 @@ export default function Settings() {
                 </div>
               }
             />
+            {rgb.devices[deviceIndex]?.zones && rgb.devices[deviceIndex].zones.length > 0 && (
+              <SettingRow
+                title="Per-zone colors"
+                description="Set individual zones of this device to solid colors"
+                control={
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select value={zoneIndex} onChange={(e) => setZoneIndex(+e.target.value)} aria-label="RGB zone">
+                      {rgb.devices[deviceIndex].zones.map((z, i) => (
+                        <option key={i} value={i}>{z.name} ({z.leds_count} LEDs)</option>
+                      ))}
+                    </select>
+                    <input
+                      type="color"
+                      value={zoneColors[zoneIndex] ?? rgbColor}
+                      onChange={(e) => setZoneColors({ ...zoneColors, [zoneIndex]: e.target.value })}
+                      className="h-6 w-8 cursor-pointer rounded-sm border-0 bg-transparent"
+                      aria-label="Zone color"
+                    />
+                    <button className="btn-ghost" onClick={applyZoneColor}>Apply zone</button>
+                  </div>
+                }
+              />
+            )}
             <SettingRow
               title="Restore current mode"
               description="Return the device to its original lighting mode"
@@ -908,6 +1089,15 @@ export default function Settings() {
       {/* About */}
       <Section bare title={t("settings.about")}>
         <SettingRow
+          title={t("settings.about.diagnostics")}
+          description={t("settings.about.diagnostics.desc")}
+          control={
+            <button className="btn-ghost" onClick={bundleDiagnostics}>
+              {t("settings.about.diagnostics.cta")}
+            </button>
+          }
+        />
+        <SettingRow
           title={t("settings.language")}
           description={t("settings.language.desc")}
           control={
@@ -930,6 +1120,8 @@ export default function Settings() {
             <span className="text-[var(--text-secondary)]">{t("settings.about.version", { version: appVersion })}</span> · Tauri {IS_TAURI ? "(native)" : "(browser preview)"}
           </div>
           <div>{t("settings.about.localFirst")}</div>
+          {/* P4-8 — SmartScreen honesty: the "Unknown publisher" prompt is expected, not a bug. */}
+          <div className="text-xs">{t("settings.about.unsigned")}</div>
           <div className="text-xs">{t("settings.about.built")}</div>
           {buildInfo && (
             <div className="border-t border-[var(--border-subtle)] pt-2 text-xs">
@@ -988,7 +1180,18 @@ function maintenanceStatus(lastRun: number, createdAt: number, intervalMs: numbe
   return `next in ${Math.max(1, m)}m`;
 }
 
+// ---- Splash config types (mirror splash.rs) ----
+interface SplashConfig {
+  enabled: boolean;
+  timeout_secs: number;
+  launch_at_login: boolean;
+}
+
 // ---- RGB lighting types (mirror rgb.rs) ----
+interface RGBZone {
+  name: string;
+  leds_count: number;
+}
 interface RGBDevice {
   index: number;
   name: string;
@@ -997,6 +1200,7 @@ interface RGBDevice {
   num_modes: number;
   active_mode: number;
   colors: number[][];
+  zones: RGBZone[];
 }
 interface RGBState {
   available: boolean;

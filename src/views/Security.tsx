@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { errorCopy, call } from "../lib/api";
+import { errorCopy, call, callWithTimeout } from "../lib/api";
 import { useLoad } from "../lib/useLoad";
 import type { AuditItem, PermissionState, PrivacyPolicyItem, UsbDevice } from "../lib/types";
-import { InlineAlert, Modal, Section, StatusDot, Toggle, toast } from "../components/ui";
+import { InlineAlert, Modal, Progress, Section, Select, StatusDot, Toggle, toast } from "../components/ui";
 import {
   IconShieldCheck, IconShieldAlert, IconShieldX,
-  IconScan, IconFingerprint, IconRefresh,
+  IconScan, IconFingerprint, IconRefresh, IconChevronDown, IconChevronUp,
+  IconPlus, IconTrash, IconExternalLink, IconTimer,
 } from "../components/icons";
 
 interface HealthStatus {
@@ -14,12 +15,30 @@ interface HealthStatus {
   firewall: { name: string; enabled: boolean }[];
   third_party_active: boolean;
   tamper_protection_on: boolean | null;
-  defender_detail: {
-    real_time_protection_on: boolean | null;
-    signature_age_days: number | null;
-    definitions_up_to_date: boolean | null;
-    tamper_protection: boolean | null;
-  } | null;
+  defender_detail: DefenderDetail | null;
+}
+
+interface DefenderDetail {
+  real_time_protection_on: boolean | null;
+  last_scan_type: string | null;
+  last_scan_time: string | null;
+  last_scan_result: string | null;
+  signature_age_days: number | null;
+  definitions_up_to_date: boolean | null;
+  definitions_age: string | null;
+  tamper_protection: boolean | null;
+  behavior_monitor_on: boolean | null;
+  nis_on: boolean | null;
+  on_access_protection_on: boolean | null;
+  ioav_protection_on: boolean | null;
+}
+
+interface RegisteredProduct {
+  name: string;
+  product_kind: string; // "antivirus" | "firewall" | "antispyware"
+  enabled: boolean;
+  up_to_date: boolean;
+  product_state_hex: string;
 }
 
 interface ThreatEntry {
@@ -47,7 +66,10 @@ interface FlaggedEntry {
   is_signed: boolean | null;
 }
 
-
+interface Exclusion {
+  target: string;
+  kind: string; // "path" | "extension" | "process"
+}
 
 const HEALTH_COLORS: Record<string, string> = {
   healthy: "border-[var(--status-success-border)] bg-[var(--status-success-bg)]",
@@ -56,15 +78,58 @@ const HEALTH_COLORS: Record<string, string> = {
   unknown: "border-[var(--border-default)] bg-[var(--surface-overlay)]",
 };
 
+const KIND_LABEL: Record<string, string> = { path: "Folder / file path", extension: "File extension", process: "Process name" };
+
+function DefenderLayerRow({ label, on, warning }: { label: string; on: boolean | null; warning?: boolean }) {
+  return (
+    <div className="flex items-center justify-between rounded-lg border border-[var(--border-subtle)] px-3 py-2">
+      <span className="text-xs text-[var(--text-secondary)]">{label}</span>
+      <StatusDot status={on ? "success" : warning ? "warning" : "danger"} />
+    </div>
+  );
+}
+
 export default function Security() {
   const [_items, setItems] = useState<AuditItem[] | null>(null);
   const [scanning, setScanning] = useState(false);
   const [health, setHealth] = useState<HealthStatus | null>(null);
   const [scanHist, setScanHist] = useState<ScanHistoryEntry[]>([]);
   const [threats, setThreats] = useState<ThreatEntry[]>([]);
-  const [_flagged, setFlagged] = useState<FlaggedEntry[]>([]);
+  const [flagged, setFlagged] = useState<FlaggedEntry[]>([]);
   const [cfaMode, setCfaMode] = useState("disabled");
   const [confirm, setConfirm] = useState<{ title: string; body: string; confirmLabel: string; run: () => void } | null>(null);
+
+  // P1-1 — full Defender detail card (behavior monitor, NIS, on-access, IOAV, last scan).
+  const { data: defender, error: defenderError, refresh: refreshDefender } = useLoad<DefenderDetail | null>("security_get_defender_detail");
+  // P1-3 — third-party protection products registered with Windows Security Center.
+  const { data: products, error: productsError, refresh: refreshProducts } = useLoad<RegisteredProduct[]>("security_list_registered_products");
+
+  // P1-4 — exclusions manager.
+  const [exclusions, setExclusions] = useState<Exclusion[]>([]);
+  const [exclusionsError, setExclusionsError] = useState<string | null>(null);
+  const [exclusionTarget, setExclusionTarget] = useState("");
+  const [exclusionKind, setExclusionKind] = useState("path");
+
+  // P1-5 — CFA allowlist add/remove (Defender has no clean "list" surface for
+  // these via one command, so the manager is add/remove with honest copy).
+  const [cfaApp, setCfaApp] = useState("");
+  const [cfaFolder, setCfaFolder] = useState("");
+
+  // P1-6 — temporary real-time-protection disable with a live countdown.
+  const [rtDisabled, setRtDisabled] = useState<{ disabled: boolean; remaining_secs: number }>({ disabled: false, remaining_secs: 0 });
+  const [rtMinutes, setRtMinutes] = useState("10");
+  const [rtBusy, setRtBusy] = useState(false);
+
+  // P1-7 — live scan progress polling.
+  const [scanActive, setScanActive] = useState(false);
+
+  // P1-2 / P1-9 — drill-down expanders.
+  const [expandedThreat, setExpandedThreat] = useState<string | null>(null);
+  const [threatDetail, setThreatDetail] = useState<Record<string, unknown> | null>(null);
+  const [threatDetailError, setThreatDetailError] = useState<string | null>(null);
+  const [expandedFlag, setExpandedFlag] = useState<string | null>(null);
+  const [flagDetail, setFlagDetail] = useState<Record<string, unknown> | null>(null);
+  const [flagDetailError, setFlagDetailError] = useState<string | null>(null);
 
   // S2.2 — the Privacy Audit trio + ASR rules load through useLoad: real
   // error surfaces, one toast per command per session on first failure.
@@ -72,6 +137,44 @@ export default function Security() {
   const { data: privacy, error: privacyError } = useLoad<PrivacyPolicyItem[]>("get_browser_privacy");
   const { data: usb, error: usbError } = useLoad<UsbDevice[]>("get_usb_history");
   const { data: asrRules, error: asrError, refresh: refreshAsr } = useLoad<{ id: string; name: string; action: string }[]>("security_list_asr_rules");
+
+  const loadExclusions = useCallback(() => {
+    call<Exclusion[]>("security_manage_exclusions", { action: "list" })
+      .then(setExclusions)
+      .catch((e) => setExclusionsError(errorCopy(e)));
+  }, []);
+
+  useEffect(() => {
+    loadExclusions();
+  }, [loadExclusions]);
+
+  // P1-6 — countdown ticker while real-time protection is paused.
+  useEffect(() => {
+    if (!rtDisabled.disabled) return;
+    const id = window.setInterval(() => {
+      call<{ disabled: boolean; remaining_secs: number }>("security_get_rt_disable_remaining_time")
+        .then((s) => setRtDisabled(s))
+        .catch(() => { /* transient — next tick retries */ });
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [rtDisabled.disabled]);
+
+  // P1-7 — poll scan progress while a scan is running; refresh results on completion.
+  useEffect(() => {
+    if (!scanActive) return;
+    const id = window.setInterval(() => {
+      call<{ in_progress: boolean; progress: number }>("security_get_scan_progress")
+        .then((s) => {
+          if (!s.in_progress) {
+            setScanActive(false);
+            run();
+          }
+        })
+        .catch(() => { /* transient */ });
+    }, 2000);
+    return () => window.clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scanActive]);
 
   const run = useCallback(async () => {
     setScanning(true);
@@ -91,17 +194,60 @@ export default function Security() {
       setFlagged(fl);
       setCfaMode(cfa.mode);
       refreshAsr();
+      refreshDefender();
+      refreshProducts();
+      loadExclusions();
     } catch (e) {
       toast(errorCopy(e), "err");
     } finally {
       setScanning(false);
     }
-  }, [refreshAsr]);
+  }, [refreshAsr, refreshDefender, refreshProducts, loadExclusions]);
 
   useEffect(() => {
     run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const startScan = (scanType: string) => {
+    // The trigger returns fast (the scan runs in its own thread); the timeout
+    // only guards against a hung trigger.
+    callWithTimeout("security_trigger_scan", { scan_type: scanType }, 30_000)
+      .then((r: any) => {
+        toast(r);
+        setScanActive(true);
+      })
+      .catch((e) => toast(errorCopy(e), "err"));
+  };
+
+  const toggleThreatDetail = (t: ThreatEntry) => {
+    if (expandedThreat === t.id) {
+      setExpandedThreat(null);
+      setThreatDetail(null);
+      return;
+    }
+    setExpandedThreat(t.id);
+    setThreatDetail(null);
+    setThreatDetailError(null);
+    call<Record<string, unknown>>("security_get_threat_detail", { threat_id: t.id })
+      .then(setThreatDetail)
+      .catch((e) => setThreatDetailError(errorCopy(e)));
+  };
+
+  const toggleFlagDetail = (f: FlaggedEntry) => {
+    const key = `${f.name}::${f.location}`;
+    if (expandedFlag === key) {
+      setExpandedFlag(null);
+      setFlagDetail(null);
+      return;
+    }
+    setExpandedFlag(key);
+    setFlagDetail(null);
+    setFlagDetailError(null);
+    call<Record<string, unknown>>("security_get_flagged_entry_detail", { name: f.name, location: f.location })
+      .then(setFlagDetail)
+      .catch((e) => setFlagDetailError(errorCopy(e)));
+  };
 
   return (
     <div className="space-y-4">
@@ -175,21 +321,15 @@ export default function Security() {
             <div className="ml-auto flex gap-2">
               <button
                 className="btn-ghost text-xs"
-                onClick={() => {
-                  call("security_trigger_scan", { scan_type: "quick" })
-                    .then((r: any) => toast(r))
-                    .catch((e) => toast(errorCopy(e), "err"));
-                }}
+                disabled={scanActive}
+                onClick={() => startScan("quick")}
               >
                 <IconScan size={13} /> Quick Scan
               </button>
               <button
                 className="btn-ghost text-xs"
-                onClick={() => {
-                  call("security_trigger_scan", { scan_type: "full" })
-                    .then((r: any) => toast(r))
-                    .catch((e) => toast(errorCopy(e), "err"));
-                }}
+                disabled={scanActive}
+                onClick={() => startScan("full")}
               >
                 <IconScan size={13} /> Full Scan
               </button>
@@ -205,6 +345,72 @@ export default function Security() {
               </button>
             </div>
           </div>
+
+          {/* P1-7 — live scan progress */}
+          {scanActive && (
+            <div className="mt-4 flex items-center gap-3">
+              <Progress indeterminate />
+              <span className="text-xs text-[var(--text-secondary)]">Scan running in the background… results refresh when it finishes.</span>
+            </div>
+          )}
+
+          {/* P1-1 — Defender protection layers */}
+          {defender && (
+            <div className="mt-4">
+              <div className="mb-2 text-xs font-medium text-[var(--text-tertiary)]">Defender protection layers</div>
+              {defenderError && <InlineAlert>{defenderError}</InlineAlert>}
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                <DefenderLayerRow label="Real-time protection" on={defender.real_time_protection_on} />
+                <DefenderLayerRow label="Behavior monitoring" on={defender.behavior_monitor_on} />
+                <DefenderLayerRow label="Network inspection (NIS)" on={defender.nis_on} />
+                <DefenderLayerRow label="On-access scanning" on={defender.on_access_protection_on} />
+                <DefenderLayerRow label="IOAV (downloaded files)" on={defender.ioav_protection_on} />
+                <DefenderLayerRow label="Tamper protection" on={defender.tamper_protection} warning />
+              </div>
+              {defender.last_scan_time && (
+                <div className="mt-2 text-xs text-[var(--text-tertiary)]">
+                  Last scan: {defender.last_scan_type ?? "quick"} · {defender.last_scan_time} · {defender.last_scan_result ?? "completed"}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* P1-3 — third-party protection */}
+          {(products ?? []).length > 0 && (
+            <div className="mt-4">
+              <div className="mb-2 flex items-center justify-between">
+                <div className="text-xs font-medium text-[var(--text-tertiary)]">Registered protection products</div>
+                <button
+                  className="btn-ghost text-2xs"
+                  onClick={() =>
+                    call("security_open_thirdparty_scanner")
+                      .then((r: any) => toast(r))
+                      .catch((e) => toast(errorCopy(e), "err"))
+                  }
+                >
+                  <IconExternalLink size={11} /> Open Windows Security
+                </button>
+              </div>
+              {productsError && <InlineAlert>{productsError}</InlineAlert>}
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {(products ?? []).map((p) => (
+                  <div
+                    key={p.name + p.product_kind}
+                    className="flex items-center justify-between gap-2 rounded-lg border border-[var(--border-subtle)] px-3 py-2"
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate text-xs text-[var(--text-secondary)]" title={p.name}>{p.name}</div>
+                      <div className="text-2xs capitalize text-[var(--text-tertiary)]">{p.product_kind}</div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <StatusDot status={p.enabled ? "success" : "danger"} />
+                      <StatusDot status={p.up_to_date ? "success" : "warning"} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Scan history */}
           {scanHist.length > 0 && (
@@ -238,15 +444,18 @@ export default function Security() {
                 className="rounded-xl border border-[var(--border-default)] bg-[var(--surface-overlay)] px-4 py-3"
               >
                 <div className="flex items-start justify-between">
-                  <div>
-                    <div className="text-sm font-medium text-[var(--text-primary)]">
-                      {t.name || "Unknown process"}
+                  <button className="min-w-0 flex-1 text-left" onClick={() => toggleThreatDetail(t)}>
+                    <div className="flex items-center gap-1.5">
+                      {expandedThreat === t.id ? <IconChevronUp size={12} /> : <IconChevronDown size={12} />}
+                      <span className="text-sm font-medium text-[var(--text-primary)]">
+                        {t.name || "Unknown process"}
+                      </span>
                     </div>
-                    <div className="text-xs text-[var(--text-tertiary)]">{t.category_description}</div>
-                    <div className="mt-0.5 text-2xs text-[var(--text-tertiary)]">
-                      State: {t.state} · {t.date.substring(0, 10)}
+                    <div className="ml-4 text-xs text-[var(--text-tertiary)]">{t.category_description}</div>
+                    <div className="ml-4 mt-1 text-2xs text-[var(--text-tertiary)]">
+                      State: {t.state} · Severity: {t.severity} · {t.date.substring(0, 10)}
                     </div>
-                  </div>
+                  </button>
                   <div className="flex gap-1.5">
                     <button
                       className="btn-ghost text-2xs"
@@ -276,11 +485,147 @@ export default function Security() {
                     </button>
                   </div>
                 </div>
+
+                {/* P1-2 — threat detail drill-down */}
+                {expandedThreat === t.id && (
+                  <div className="mt-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-base)] p-3">
+                    {threatDetailError && <InlineAlert>{threatDetailError}</InlineAlert>}
+                    {threatDetail && (
+                      <div className="grid gap-x-6 gap-y-1 text-xs sm:grid-cols-2">
+                        {Object.entries(threatDetail)
+                          .filter(([, v]) => v !== null && v !== "" && v !== "0001-01-01T00:00:00")
+                          .map(([k, v]) => (
+                            <div key={k} className="flex items-baseline justify-between gap-3 border-b border-[var(--border-subtle)] py-1 last:border-0">
+                              <span className="shrink-0 text-[var(--text-tertiary)]">{k}</span>
+                              <span className="min-w-0 truncate text-right text-[var(--text-secondary)]" title={String(v)}>
+                                {Array.isArray(v) ? v.join("; ") : typeof v === "object" ? JSON.stringify(v) : String(v)}
+                              </span>
+                            </div>
+                          ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>
         </Section>
       )}
+
+      {/* P1-9 — flagged auto-start entries */}
+      {flagged.length > 0 && (
+        <Section title="Flagged Auto-Start Entries" subtitle="Auto-start items that match malware persistence patterns — review, don't panic">
+          <div className="space-y-2">
+            {flagged.map((f) => {
+              const key = `${f.name}::${f.location}`;
+              return (
+                <div key={key} className="rounded-xl border border-[var(--border-default)] bg-[var(--surface-overlay)] px-4 py-3">
+                  <button className="w-full text-left" onClick={() => toggleFlagDetail(f)}>
+                    <div className="flex items-center gap-1.5">
+                      {expandedFlag === key ? <IconChevronUp size={12} /> : <IconChevronDown size={12} />}
+                      <span className="text-sm font-medium text-[var(--text-primary)]">{f.name}</span>
+                      <span className="badge badge-danger">{f.flags.length} flag(s)</span>
+                    </div>
+                    <div className="ml-4 mt-0.5 text-2xs text-[var(--text-tertiary)]">{f.location}</div>
+                  </button>
+                  <div className="ml-4 mt-1.5 space-y-1">
+                    {f.flags.map((fl, i) => (
+                      <div key={i} className="flex items-start gap-1.5 text-xs text-[var(--text-secondary)]">
+                        <StatusDot status="danger" />
+                        <span>{fl}</span>
+                      </div>
+                    ))}
+                    {f.is_signed !== null && (
+                      <div className="text-2xs text-[var(--text-tertiary)]">
+                        Signature: {f.is_signed ? "signed" : "not signed"}
+                      </div>
+                    )}
+                  </div>
+                  {expandedFlag === key && (
+                    <div className="mt-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-base)] p-3">
+                      {flagDetailError && <InlineAlert>{flagDetailError}</InlineAlert>}
+                      {flagDetail && (
+                        <div className="space-y-1 text-xs">
+                          {(Object.entries(flagDetail) as [string, unknown][]).map(([k, v]) => (
+                            <div key={k} className="flex items-baseline justify-between gap-3 border-b border-[var(--border-subtle)] py-1 last:border-0">
+                              <span className="shrink-0 text-[var(--text-tertiary)]">{k}</span>
+                              <span className="min-w-0 truncate text-right text-[var(--text-secondary)]" title={String(v)}>
+                                {Array.isArray(v) ? (v as unknown[]).join("; ") : String(v)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </Section>
+      )}
+
+      {/* P1-6 — real-time protection pause */}
+      <Section title="Temporarily Pause Real-Time Protection" subtitle="For installing something Defender mis-flags — always re-enables itself automatically">
+        {rtDisabled.disabled ? (
+          <div className="flex items-center gap-3 rounded-lg border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] px-4 py-3">
+            <IconTimer size={16} className="shrink-0 text-[var(--status-warning)]" />
+            <span className="text-sm text-[var(--status-warning)]">
+              Real-time protection is paused — re-enables in {Math.floor(rtDisabled.remaining_secs / 60)}m {rtDisabled.remaining_secs % 60}s.
+            </span>
+            <button
+              className="btn-ghost ml-auto shrink-0 text-xs"
+              disabled={rtBusy}
+              onClick={() => {
+                setRtBusy(true);
+                call("security_cancel_rt_disable_early")
+                  .then((r: any) => {
+                    toast(r);
+                    setRtDisabled({ disabled: false, remaining_secs: 0 });
+                  })
+                  .catch((e) => toast(errorCopy(e), "err"))
+                  .finally(() => setRtBusy(false));
+              }}
+            >
+              Re-enable now
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center gap-3">
+            <Select
+              ariaLabel="Pause duration"
+              value={rtMinutes}
+              onChange={setRtMinutes}
+              options={[
+                { value: "5", label: "5 minutes" },
+                { value: "10", label: "10 minutes" },
+                { value: "30", label: "30 minutes" },
+                { value: "60", label: "1 hour" },
+              ]}
+            />
+            <button
+              className="btn-ghost text-xs text-[var(--status-danger)]"
+              onClick={() =>
+                setConfirm({
+                  title: "Pause real-time protection?",
+                  body: `Real-time protection will be OFF for ${rtMinutes} minutes. Your PC is vulnerable to new malware during that window. It will re-enable automatically when the timer ends, and this action is logged in History.`,
+                  confirmLabel: "Pause protection",
+                  run: () => {
+                    call("security_request_temporary_rt_disable", { duration_secs: Number(rtMinutes) * 60 })
+                      .then((r: any) => {
+                        toast(r);
+                        setRtDisabled({ disabled: true, remaining_secs: Number(rtMinutes) * 60 });
+                      })
+                      .catch((e) => toast(errorCopy(e), "err"));
+                  },
+                })
+              }
+            >
+              Pause real-time protection
+            </button>
+          </div>
+        )}
+      </Section>
 
       {/* Protection Hardening */}
       <Section title="Protection Hardening" subtitle="Controlled Folder Access (ransomware protection) and Attack Surface Reduction rules">
@@ -328,6 +673,57 @@ export default function Security() {
             </button>
           </div>
         </div>
+
+        {/* P1-5 — CFA allowlist */}
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <div>
+            <div className="mb-1.5 text-xs font-medium text-[var(--text-tertiary)]">Allow an app (Controlled Folder Access)</div>
+            <div className="flex gap-2">
+              <input
+                className="input min-w-0 flex-1"
+                placeholder="C:\Program Files\App\app.exe"
+                value={cfaApp}
+                onChange={(e) => setCfaApp(e.target.value)}
+                aria-label="Allowed app path"
+              />
+              <button
+                className="btn-ghost shrink-0 text-xs"
+                onClick={() => {
+                  if (!cfaApp.trim()) { toast("Enter an app path first", "err"); return; }
+                  call("security_manage_cfa_allowlist", { action: "add", target: cfaApp, is_folder: false })
+                    .then((r: any) => { toast(r); setCfaApp(""); })
+                    .catch((e) => toast(errorCopy(e), "err"));
+                }}
+              >
+                <IconPlus size={12} /> Allow
+              </button>
+            </div>
+          </div>
+          <div>
+            <div className="mb-1.5 text-xs font-medium text-[var(--text-tertiary)]">Protect a folder</div>
+            <div className="flex gap-2">
+              <input
+                className="input min-w-0 flex-1"
+                placeholder="C:\Users\you\Documents"
+                value={cfaFolder}
+                onChange={(e) => setCfaFolder(e.target.value)}
+                aria-label="Protected folder path"
+              />
+              <button
+                className="btn-ghost shrink-0 text-xs"
+                onClick={() => {
+                  if (!cfaFolder.trim()) { toast("Enter a folder path first", "err"); return; }
+                  call("security_manage_cfa_allowlist", { action: "add", target: cfaFolder, is_folder: true })
+                    .then((r: any) => { toast(r); setCfaFolder(""); })
+                    .catch((e) => toast(errorCopy(e), "err"));
+                }}
+              >
+                <IconPlus size={12} /> Protect
+              </button>
+            </div>
+          </div>
+        </div>
+
         {asrError && <InlineAlert>{asrError}</InlineAlert>}
         {(asrRules ?? []).length > 0 && (
           <div className="mt-3 space-y-1.5">
@@ -369,6 +765,70 @@ export default function Security() {
               </div>
             ))}
           </div>
+        )}
+      </Section>
+
+      {/* P1-4 — exclusions manager */}
+      <Section title="Defender Exclusions" subtitle="Files, folders, extensions or processes Defender skips — review these regularly, they're a classic malware persistence spot">
+        {exclusionsError && <InlineAlert>{exclusionsError}</InlineAlert>}
+        <div className="flex flex-wrap items-center gap-2">
+          <Select
+            ariaLabel="Exclusion kind"
+            value={exclusionKind}
+            onChange={setExclusionKind}
+            options={[
+              { value: "path", label: KIND_LABEL.path },
+              { value: "extension", label: KIND_LABEL.extension },
+              { value: "process", label: KIND_LABEL.process },
+            ]}
+          />
+          <input
+            className="input min-w-0 flex-1"
+            placeholder={exclusionKind === "extension" ? ".exe" : exclusionKind === "process" ? "app.exe" : "C:\\path\\to\\folder"}
+            value={exclusionTarget}
+            onChange={(e) => setExclusionTarget(e.target.value)}
+            aria-label="Exclusion target"
+          />
+          <button
+            className="btn-ghost text-xs"
+            onClick={() => {
+              if (!exclusionTarget.trim()) { toast("Enter a target first", "err"); return; }
+              call<Exclusion[]>("security_manage_exclusions", { action: "add", target: exclusionTarget.trim(), kind: exclusionKind })
+                .then((list) => { setExclusions(list); setExclusionTarget(""); toast(`Added ${exclusionTarget.trim()} to exclusions`); })
+                .catch((e) => toast(errorCopy(e), "err"));
+            }}
+          >
+            <IconPlus size={12} /> Add exclusion
+          </button>
+        </div>
+        {exclusions.length > 0 && (
+          <div className="mt-3 space-y-1.5">
+            {exclusions.map((x) => (
+              <div
+                key={x.kind + x.target}
+                className="flex items-center justify-between gap-2 rounded-lg border border-[var(--border-subtle)] px-3 py-2"
+              >
+                <div className="min-w-0">
+                  <div className="truncate text-xs text-[var(--text-secondary)]" title={x.target}>{x.target}</div>
+                  <div className="text-2xs capitalize text-[var(--text-tertiary)]">{x.kind}</div>
+                </div>
+                <button
+                  className="btn-ghost shrink-0 text-2xs text-[var(--status-danger)]"
+                  aria-label={`Remove exclusion ${x.target}`}
+                  onClick={() =>
+                    call<Exclusion[]>("security_manage_exclusions", { action: "remove", target: x.target, kind: x.kind })
+                      .then((list) => { setExclusions(list); toast("Exclusion removed"); })
+                      .catch((e) => toast(errorCopy(e), "err"))
+                  }
+                >
+                  <IconTrash size={12} /> Remove
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        {exclusions.length === 0 && !exclusionsError && (
+          <div className="mt-3 text-xs text-[var(--text-tertiary)]">No exclusions — Defender is scanning everything.</div>
         )}
       </Section>
 

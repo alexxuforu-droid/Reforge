@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { errorCopy, call, fmt, fmtDate, swallow } from "../lib/api";
+import { errorCopy, call, callWithTimeout, fmt, fmtDate, swallow } from "../lib/api";
 import { useLoad } from "../lib/useLoad";
 import type {
   AssociationInfo, BloatApp, BootStats, CleanResult, DriverInfo, ExtensionInfo,
@@ -58,7 +58,7 @@ export default function Tuneup() {
   const runMaintenance = async () => {
     setRunningMaint(true);
     try {
-      const r = await call<MaintenanceReport>("run_maintenance");
+      const r = await callWithTimeout<MaintenanceReport>("run_maintenance", undefined, 180_000);
       refreshReports();
       toast(`Maintenance complete — ${fmt(r.junk_bytes)} junk found, ${fmt(r.duplicate_bytes)} duplicates`);
     } catch (e) {
