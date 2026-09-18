@@ -791,6 +791,12 @@ textarea:focus-visible {
   .widget-dock button:active {
     transform: scale(0.97);
   }
+  .folder-icon {
+    transition: transform 180ms var(--ease-out-expo), color 180ms var(--ease-out-expo);
+  }
+  .folder-icon:hover {
+    transform: translateY(-1px) rotate(-4deg);
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .look-artwork {
