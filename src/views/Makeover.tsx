@@ -1,8 +1,8 @@
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { call, callWithTimeout, errorCopy } from "../lib/api";
 import { fmt } from "../lib/format";
 import { useLoad } from "../lib/useLoad";
-import type { Pack, ThemeState, EngineState, WallpaperState, TranscodeConfig, FontSubstitution, CapabilityMatrix } from "../lib/types";
+import type { Pack, ThemeState, EngineState, WallpaperState, FontSubstitution, CapabilityMatrix } from "../lib/types";
 import { InlineAlert, Modal, ScenePreview, Section, StatusDot, Toggle, toast } from "../components/ui";
 import { BlurReveal } from "../components/motion/BlurReveal";
 import { StyleStudioRemix } from "../components/StyleStudioRemix";
@@ -20,7 +20,7 @@ import {
   sceneConfigForStyle,
 } from "../styles";
 import {
-  IconPower, IconPlus, IconTrash, IconPause, IconPlay,
+  IconPlus, IconTrash, IconPlay,
   IconStar, IconSearch, IconUpload, IconDownload,
 } from "../components/icons";
 import { shade, copyText, IMPORT_TIMEOUT_MS } from "./makeover/shared";
@@ -39,6 +39,9 @@ import { useLockScreenSection } from "./makeover/useLockScreenSection";
 import { useStaticWallpaper } from "./makeover/useStaticWallpaper";
 import { useScreensaverSection } from "./makeover/useScreensaverSection";
 import { usePackExport } from "./makeover/usePackExport";
+
+const EngineSection = lazy(() => import("./makeover/EngineSection"));
+const VideoSection = lazy(() => import("./makeover/VideoSection"));
 
 const ACCENT_SUGGESTIONS = [
   "#6D7CFF", "#FF2E88", "#FF7B54", "#34D399",
@@ -585,56 +588,27 @@ export default function Makeover() {
       </div>
 
       {/* ---- Animated Wallpaper Engine ---- */}
-      <div ref={engineRef}>
-      <Section title="Animated Wallpaper Engine" subtitle="Living, breathing desktops — procedural scenes render behind your icons" actions={<div className="flex gap-2"><button className="btn-ghost shrink-0 text-2xs" onClick={() => setStudioOpen(true)}>Wallpaper Studio</button>{engine?.active ? (<><button className="btn-ghost shrink-0 text-2xs" onClick={() => freezeScene(!engine.frozen)}>{engine.frozen ? <><IconPlay size={11} /> Resume</> : <><IconPause size={11} /> Freeze</>}</button><button className="btn-danger shrink-0 text-2xs" disabled={engineBusy} onClick={stopScene}><IconPower size={11} /> Stop</button></>) : (<span className="badge badge-neutral">Not running</span>)}{engine?.scene && (<button className="btn-ghost shrink-0 text-2xs" disabled={packBusy} onClick={exportScenePack} title="Capture this scene (plus your current look) into a shareable pack">{packBusy ? "Capturing…" : "Export scene pack"}</button>)}</div>}>
-        {engineError && <InlineAlert>{engineError}</InlineAlert>}
-        {scenesError && <InlineAlert>{scenesError}</InlineAlert>}
-        {engine?.active && (
-          <div className="mb-3 rounded-lg border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-3 py-2 text-xs text-[var(--status-success)]">
-            <StatusDot status="success" pulse /> {engine.scene?.name ?? "Scene"} is live{engine.frozen ? " (frozen)" : ""}
-          </div>
-        )}
-        <div className="mb-3 flex flex-wrap gap-1.5">
-          {["all", "calm", "energetic", "nature", "space", "seasonal"].map((m) => (
-            <button key={m} onClick={() => setMoodFilter(m)} className={`rounded-full px-3 py-1 text-xs capitalize transition-colors ${moodFilter === m ? "bg-[var(--accent-hex)] text-white" : "bg-[var(--surface-overlay)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"}`}>
-              {m}
-            </button>
-          ))}
-        </div>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-          {(scenes ?? []).filter((s) => moodFilter === "all" || s.mood === moodFilter).map((s) => (
-            <div key={s.id} onMouseEnter={() => setHoverScene(s.id)} onMouseLeave={() => setHoverScene((h) => (h === s.id ? null : h))} className={`group relative overflow-hidden rounded-xl border text-left transition-colors ${engine?.scene?.id === s.id ? "border-[var(--status-success-border)]" : "border-[var(--border-default)] hover:border-[var(--border-accent)]"}`}>
-              <button onClick={() => applyScene(s)} disabled={engineBusy} className="w-full">
-                <div className="h-24 w-full overflow-hidden">
-                  {hoverScene === s.id ? (
-                    <ScenePreview kind={s.kind} colors={s.colors} speed={s.speed} density={s.density} className="h-full w-full" />
-                  ) : (
-                    // static color story until hovered — zero canvases on load (S7.6, content preview)
-                    <div className="h-full w-full" style={{ background: `linear-gradient(135deg, ${s.colors[1] ?? s.colors[0]}, ${s.colors[0]})` }} />
-                  )}
-                </div>
-                <div className="p-2.5">
-                  <div className="truncate text-xs font-semibold text-[var(--text-primary)]" title={s.name}>{s.name}</div>
-                  <div className="mt-0.5 flex items-center justify-between">
-                    <span className="text-2xs capitalize text-[var(--text-tertiary)]">{s.kind}</span>
-                    {engine?.scene?.id === s.id ? <span className="badge badge-success">LIVE</span> : <span className="text-2xs text-[var(--text-secondary)]">Apply</span>}
-                  </div>
-                </div>
-              </button>
-              {s.id.startsWith("custom-") && (
-                <button
-                  onClick={() => deleteCustomScene(s)}
-                  className="absolute right-1.5 top-1.5 rounded-md bg-black/45 p-1 text-white/80 opacity-0 transition-opacity hover:text-white group-hover:opacity-100"
-                  title="Delete custom scene"
-                >
-                  <IconTrash size={12} />
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
-      </Section>
-      </div>
+      <Suspense fallback={<div className="card p-4 text-xs text-[var(--text-tertiary)]">Loading engine…</div>}>
+        <EngineSection
+          engine={engine}
+          engineError={engineError}
+          scenes={scenes}
+          scenesError={scenesError}
+          moodFilter={moodFilter}
+          setMoodFilter={setMoodFilter}
+          hoverScene={hoverScene}
+          setHoverScene={setHoverScene}
+          engineBusy={engineBusy}
+          setStudioOpen={setStudioOpen}
+          applyScene={applyScene}
+          stopScene={stopScene}
+          freezeScene={freezeScene}
+          deleteCustomScene={deleteCustomScene}
+          engineRef={engineRef}
+          packBusy={packBusy}
+          exportScenePack={exportScenePack}
+        />
+      </Suspense>
 
       {/* ---- Screensaver ---- */}
       <div ref={screensaverRef}>
@@ -699,79 +673,30 @@ export default function Makeover() {
       </div>
 
       {/* ---- Video / GIF wallpaper ---- */}
-      <div ref={videoRef}>
-      <Section title="Video & GIF wallpaper" subtitle="Loop a video or animated image — MP4, WebM and GIF, normalized on import" actions={engine?.media ? (<div className="flex gap-2"><button className="btn-ghost shrink-0 text-xs" onClick={toggleVideoPaused}>{videoPaused ? <><IconPlay size={12} /> Resume</> : <><IconPause size={12} /> Pause</>}</button><button className="btn-danger shrink-0 text-xs" disabled={videoBusy} onClick={stopVideoWallpaper}><IconPower size={12} /> Stop video</button></div>) : undefined}>
-        {videoError && <InlineAlert>{videoError}</InlineAlert>}
-        {transcodeError && <InlineAlert>{transcodeError}</InlineAlert>}
-        <div className="mb-3 flex gap-2">
-          <input className="input" placeholder="C:\videos\aurora.mp4" value={videoPath} onChange={(e) => setVideoPath(e.target.value)} />
-          <button className="btn-primary shrink-0" onClick={setVideoWallpaper} disabled={videoBusy || !videoPath.trim()}>{videoBusy ? "Importing…" : "Set video"}</button>
-        </div>
-        {/* P2-1 — import quality preset lives here too (not just Settings) */}
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <span className="text-2xs text-[var(--text-tertiary)]">Import quality:</span>
-          {(["high", "balanced", "performance"] as const).map((p) => (
-            <button
-              key={p}
-              onClick={() =>
-                call<TranscodeConfig>("set_transcode_config", { config: { preset: p } })
-                  .then(() => { refreshTranscodeCfg(); toast(`Video imports → ${p}`); })
-                  .catch((e) => toast(errorCopy(e), "err"))
-              }
-              className={`rounded-lg border px-2.5 py-1 text-2xs capitalize transition-colors ${(transcodeCfg?.preset ?? "balanced") === p ? "border-[var(--accent-hex)] bg-[var(--accent-hex)]/10 text-[var(--text-primary)]" : "border-[var(--border-default)] bg-[var(--surface-overlay)] text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]"}`}
-            >
-              {p}
-            </button>
-          ))}
-          <span className="text-2xs text-[var(--text-tertiary)]">high = best quality, biggest files · performance = fastest, smallest</span>
-        </div>
-        {/* M-1 — pin the video to one monitor or span them all */}
-        {wallpapers && wallpapers.monitors.length > 1 && (
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            <span className="text-2xs text-[var(--text-tertiary)]">Play on:</span>
-            <select value={videoMonitor} onChange={(e) => setVideoMonitor(e.target.value)} aria-label="Monitor for new video wallpapers">
-              <option value="">All monitors</option>
-              {wallpapers.monitors.map((m) => (<option key={m.id} value={m.id}>{m.id}</option>))}
-            </select>
-            <span className="text-2xs text-[var(--text-tertiary)]">applies to the next video you set</span>
-          </div>
-        )}
-        {videoBusy && transcodeNote && (
-          <div className="mb-3 flex items-center gap-2 text-xs text-[var(--text-secondary)]">
-            <span className="h-2 w-2 animate-pulse rounded-full bg-[var(--accent-hex)]" />
-            {transcodeNote}
-          </div>
-        )}
-        {transcode && !transcode.available && (
-          <div className="mb-3 rounded-lg border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] px-3 py-2 text-xs text-[var(--status-warning)]">
-            ffmpeg isn't bundled — videos play without normalization.
-          </div>
-        )}
-        {engine?.media && (
-          <div className="mb-3 rounded-xl border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-4 py-2.5 text-sm text-[var(--status-success)]">
-            <StatusDot status="success" pulse /> Now playing: <b>{engine.media.name}</b> ({engine.media.width}×{engine.media.height})
-          </div>
-        )}
-        {!videoError && (videoWallpapers ?? []).length > 0 && (
-          <>
-            <div className="mb-1.5 text-2xs font-medium uppercase tracking-wider text-[var(--text-tertiary)]">Imported media</div>
-            <div className="flex flex-wrap gap-2">
-              {(videoWallpapers ?? []).map((v) => (
-                <button key={v.path} onClick={() => call<EngineState>("set_video_wallpaper", { source: v.path, monitor: videoMonitor || undefined }).then(() => { refreshEngine(); toast(`Video → ${v.name}`); }).catch((e) => toast(errorCopy(e), "err"))} className={`rounded-xl border px-3 py-2 text-left text-xs transition-colors ${engine?.media?.path === v.path ? "border-[var(--status-success-border)] bg-[var(--status-success-bg)]" : "border-[var(--border-default)] bg-[var(--surface-overlay)] hover:bg-[var(--surface-hover)]"}`}>
-                  <div className="font-medium text-[var(--text-primary)]">{v.name}</div>
-                  <div className="text-2xs text-[var(--text-tertiary)]">{v.kind} · {v.width}×{v.height}{engine?.media?.monitor ? <> · pinned to {engine.media.monitor}</> : null}</div>
-                </button>
-              ))}
-            </div>
-          </>
-        )}
-        {!videoError && (videoWallpapers ?? []).length === 0 && (
-          <div className="empty-state">
-            No imported videos yet — paste a path above to loop an MP4, WebM or GIF.
-          </div>
-        )}
-      </Section>
-      </div>
+      <Suspense fallback={<div className="card p-4 text-xs text-[var(--text-tertiary)]">Loading video…</div>}>
+        <VideoSection
+          videoWallpapers={videoWallpapers}
+          videoError={videoError}
+          videoRef={videoRef}
+          videoPath={videoPath}
+          setVideoPath={setVideoPath}
+          videoBusy={videoBusy}
+          videoPaused={videoPaused}
+          transcodeNote={transcodeNote}
+          videoMonitor={videoMonitor}
+          setVideoMonitor={setVideoMonitor}
+          transcode={transcode}
+          transcodeError={transcodeError}
+          transcodeCfg={transcodeCfg}
+          refreshTranscodeCfg={refreshTranscodeCfg}
+          setVideoWallpaper={setVideoWallpaper}
+          stopVideoWallpaper={stopVideoWallpaper}
+          toggleVideoPaused={toggleVideoPaused}
+          engine={engine}
+          refreshEngine={refreshEngine}
+          wallpapers={wallpapers}
+        />
+      </Suspense>
 
       {/* ---- Widget Engine ---- */}
       <div ref={widgetsRef}>

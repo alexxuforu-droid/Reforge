@@ -11,6 +11,7 @@ import {
   IconKeyboard, IconBell, IconStar, IconSparkles,
 } from "./components/icons";
 import { AchievementToastHost, WidgetsRuntime } from "./features/widgets";
+import StatusBar from "./components/StatusBar";
 import { WIZARD_KEY } from "./lib/wizardKey";
 // Code-split every view so the initial bundle stays small (A3.5).
 const Dashboard = lazy(() => import("./views/Dashboard"));
@@ -106,10 +107,25 @@ function ViewLoader({ children }: { children: ReactNode }) {
 
 export type View = "dashboard" | "makeover" | "styles" | "marketplace" | "performance" | "tuneup" | "organize" | "security" | "history" | "settings" | "productivity" | "displays" | "network" | "gaming" | "power" | "accessibility" | "widgets";
 
+// Task 7 — unambiguous nav labels: "Style Studio" vs "Makeover session".
+// The t() keys nav.styleStudio / nav.makeoverSession may not exist yet in the
+// catalogs (another lane owns the JSON), so fall back to English literals.
+export function navLabelFor(t: (key: string) => string, id: View): string {
+  if (id === "makeover") {
+    const v = t("nav.makeoverSession");
+    return v === "nav.makeoverSession" ? "Makeover session" : v;
+  }
+  if (id === "styles") {
+    const v = t("nav.styleStudio");
+    return v === "nav.styleStudio" ? "Style Studio" : v;
+  }
+  return t(`nav.${id}`);
+}
+
 const NAV: { id: View; label: string; icon: typeof NavDashboard; hint: string; key: string }[] = [
   { id: "dashboard", label: "Dashboard", icon: NavDashboard, hint: "Health score & overview", key: "1" },
-  { id: "makeover", label: "Makeover", icon: NavMakeover, hint: "Guided full-PC makeover", key: "2" },
-  { id: "styles", label: "Style Studio", icon: IconStar, hint: "Theme studio, wallpaper engine", key: "" },
+  { id: "makeover", label: "Makeover session", icon: NavMakeover, hint: "Guided full-PC makeover", key: "2" },
+  { id: "styles", label: "Style Studio", icon: IconStar, hint: "Theme studio, wallpaper engine", key: "s" },
   { id: "marketplace", label: "Marketplace", icon: NavMarketplace, hint: "Install & share look packs", key: "3" },
   { id: "performance", label: "Performance", icon: NavPerformance, hint: "Live CPU / RAM / disk", key: "4" },
   { id: "tuneup", label: "Tune-up", icon: NavTuneup, hint: "Junk cleaner, startup, bloatware", key: "5" },
@@ -120,9 +136,9 @@ const NAV: { id: View; label: string; icon: typeof NavDashboard; hint: string; k
   { id: "network", label: "Network", icon: NavNetwork, hint: "Bandwidth, Wi-Fi, network reset", key: "0" },
   { id: "gaming", label: "Gaming", icon: NavGaming, hint: "Game mode, profiles & stream layout", key: "-" },
   { id: "power", label: "Power", icon: NavPower, hint: "Battery, plan & screen-off timers", key: "=" },
-  { id: "accessibility", label: "Accessibility", icon: NavAccess, hint: "High contrast, motion, cursor, filters", key: "" },
-  { id: "history", label: "History", icon: NavHistory, hint: "Timeline, undo & snapshots", key: "" },
-  { id: "widgets", label: "Widgets", icon: IconSparkles, hint: "Fun overlays & achievements", key: "" },
+  { id: "accessibility", label: "Accessibility", icon: NavAccess, hint: "High contrast, motion, cursor, filters", key: "a" },
+  { id: "history", label: "History", icon: NavHistory, hint: "Timeline, undo & snapshots", key: "h" },
+  { id: "widgets", label: "Widgets", icon: IconSparkles, hint: "Fun overlays & achievements", key: "w" },
   { id: "settings", label: "Settings", icon: NavSettings, hint: "Schedules, blue light, about", key: "/" },
 ];
 
@@ -179,6 +195,8 @@ export default function App() {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
+  // Task 7 — collapsible sidebar (icons-only when collapsed).
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   // S1.2 — a command that the running exe doesn't know means the binary is
   // older than the frontend it ships: show a rebuild banner, never a raw
   // "command not found" toast.
@@ -261,7 +279,7 @@ export default function App() {
   const [paletteIdx, setPaletteIdx] = useState(0);
   type PaletteItem = { id: string; label: string; hint: string; cat: string; Icon: typeof NavDashboard };
   const paletteItems = useMemo(() => {
-    const navItems: PaletteItem[] = NAV.map((n) => ({ id: n.id, label: t(`nav.${n.id}`), hint: t(`nav.${n.id}.hint`), cat: t("palette.navigation"), Icon: n.icon }));
+    const navItems: PaletteItem[] = NAV.map((n) => ({ id: n.id, label: navLabelFor(t, n.id), hint: t(`nav.${n.id}.hint`), cat: t("palette.navigation"), Icon: n.icon }));
     const extras: PaletteItem[] = [
       { id: "scan-junk", label: t("palette.scanJunk"), hint: t("palette.scanJunk.hint"), cat: t("palette.actions"), Icon: NavTuneup },
       { id: "take-snapshot", label: t("palette.takeSnapshot"), hint: t("palette.takeSnapshot.hint"), cat: t("palette.actions"), Icon: NavHistory },
@@ -302,8 +320,7 @@ export default function App() {
   // S13.1 — sidebar arrow-key navigation: ArrowUp/Down move between items,
   // Home/End jump to the first/last. Roving focus, so the list stays a single
   // tab stop for keyboard users.
-  const onSidebarKeyDown = (e: React.KeyboardEvent<HTMLElement>) => {
-    const items = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>("button[data-nav-item]"));
+  const onSidebarKeyDown = (e: React.KeyboardEvent<HTMLElement>) => {    const items = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>("button[data-nav-item]"));
     if (!items.length) return;
     const idx = items.indexOf(document.activeElement as HTMLButtonElement);
     let next = -1;
@@ -317,8 +334,25 @@ export default function App() {
     }
   };
 
+  // Task 6 — palette keyboard nav: ArrowDown/ArrowUp move the active item,
+  // Enter runs it. Attached to the palette dialog container (key events bubble
+  // up from the SearchBox input, which lives in ui.tsx).
+  const onPaletteKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setPaletteIdx((i) => Math.min(i + 1, paletteItems.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setPaletteIdx((i) => Math.max(i - 1, 0));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const item = paletteItems[paletteIdx];
+      if (item) runPalette(item);
+    }
+  };
+
   return (
-    <div className="flex h-full bg-[var(--surface-base)]">
+    <div className="flex h-full flex-col bg-[var(--surface-base)]">
       {/* S13.1 — skip-to-content: first tab stop, visually hidden until focused */}
       <a
         href="#main-content"
@@ -326,8 +360,9 @@ export default function App() {
       >
         {t("shell.skipToContent")}
       </a>
+      <div className="flex min-h-0 flex-1">
       {/* Sidebar — Win11 Settings navigation (296px) */}
-      <aside className="flex shrink-0 flex-col bg-[var(--surface-overlay)]" style={{ width: "var(--sidebar-width)" }}>
+      <aside className="flex shrink-0 flex-col bg-[var(--surface-overlay)]" style={{ width: "var(--sidebar-width)" }} data-sidebar={sidebarCollapsed ? "collapsed" : "expanded"} aria-label={t("shell.mainNavigation")}>
         {/* Search — "Find a setting" */}
         <div className="px-3 pb-2 pt-3">
           <button
@@ -356,7 +391,7 @@ export default function App() {
                 }`}
               >
                 <Icon size={20} strokeWidth={1.6} className="shrink-0" />
-                <span className="min-w-0 truncate" title={t(`nav.${n.id}`)}>{t(`nav.${n.id}`)}</span>
+                <span className="sidebar-label min-w-0 truncate" title={navLabelFor(t, n.id)}>{navLabelFor(t, n.id)}</span>
               </button>
             );
           })}
@@ -364,13 +399,24 @@ export default function App() {
 
         {/* Footer — notifications & shortcuts */}
         <div className="border-t border-[var(--border-subtle)] px-2 py-2">
+          <button
+            onClick={() => setSidebarCollapsed((v) => !v)}
+            aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            className="flex h-11 w-full items-center gap-3 rounded-[4px] px-4 text-left text-sm text-[var(--text-primary)] transition-colors duration-75 hover:bg-[var(--surface-hover)]"
+          >
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center text-[var(--text-tertiary)]" aria-hidden="true">
+              {sidebarCollapsed ? "»" : "«"}
+            </span>
+            <span className="sidebar-label flex-1 text-left">{sidebarCollapsed ? "Expand" : "Collapse"}</span>
+          </button>
           <div className="relative">
             <button
               onClick={() => setNotifOpen((v) => !v)}
               className="relative flex h-11 w-full items-center gap-3 rounded-[4px] px-4 text-left text-sm text-[var(--text-primary)] transition-colors duration-75 hover:bg-[var(--surface-hover)]"
             >
               <IconBell size={20} strokeWidth={1.6} className="shrink-0" />
-              <span className="flex-1 text-left">{t("shell.notifications")}</span>
+              <span className="sidebar-label flex-1 text-left">{t("shell.notifications")}</span>
               {unreadCount > 0 && (
                 <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--status-danger)] px-1 text-xs font-semibold text-white">
                   {unreadCount}
@@ -412,9 +458,9 @@ export default function App() {
             className="flex h-11 w-full items-center gap-3 rounded-[4px] px-4 text-left text-sm text-[var(--text-primary)] transition-colors duration-75 hover:bg-[var(--surface-hover)]"
           >
             <IconKeyboard size={20} strokeWidth={1.6} className="shrink-0" />
-            <span className="flex-1 text-left">Keyboard shortcuts</span>
+            <span className="sidebar-label flex-1 text-left">Keyboard shortcuts</span>
           </button>
-          <div className="mt-1 flex items-center gap-2 px-4 py-1.5 text-xs text-[var(--text-tertiary)]">
+          <div className="sidebar-label mt-1 flex items-center gap-2 px-4 py-1.5 text-xs text-[var(--text-tertiary)]">
             <span className={`h-1.5 w-1.5 rounded-full ${IS_TAURI ? "bg-[var(--status-success)]" : "bg-[var(--status-warning)]"}`} />
             {IS_TAURI ? "Live" : "Preview"} · Reforge v1.0.0
           </div>
@@ -468,6 +514,10 @@ export default function App() {
           </div>
         </div>
       </main>
+      </div>
+
+      {/* Task 7 — job status bar (scan / transcode progress) */}
+      <StatusBar />
 
       {/* Command palette — Win11 settings search dialog */}
       {paletteOpen && (
@@ -479,6 +529,10 @@ export default function App() {
             className="animate-scale-in w-full max-w-xl rounded-lg bg-[var(--surface-raised)]"
             style={{ boxShadow: "var(--shadow-elevation-modal)" }}
             onClick={(e) => e.stopPropagation()}
+            onKeyDown={onPaletteKeyDown}
+            data-testid="palette"
+            role="dialog"
+            aria-label="Command palette"
           >
             <div className="border-b border-[var(--border-subtle)] p-4">
               <SearchBox
@@ -488,15 +542,18 @@ export default function App() {
                 placeholder="Find a setting or run an action…"
               />
             </div>
-            <div className="max-h-80 overflow-y-auto py-1.5">
+            <div className="max-h-80 overflow-y-auto py-1.5" role="listbox" aria-label="Results">
               {paletteItems.map((item, idx) => {
                 const Icon = item.Icon;
                 return (
                   <button
                     key={item.id}
-                    ref={idx === paletteIdx ? (el) => el?.scrollIntoView({ block: "nearest" }) : undefined}
+                    ref={idx === paletteIdx ? (el) => el?.scrollIntoView?.({ block: "nearest" }) : undefined}
                     onClick={() => runPalette(item)}
                     onMouseEnter={() => setPaletteIdx(idx)}
+                    data-palette-active={idx === paletteIdx ? "true" : "false"}
+                    role="option"
+                    aria-selected={idx === paletteIdx}
                     className={`flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors ${
                       idx === paletteIdx ? "bg-[var(--surface-selected)]" : "hover:bg-[var(--surface-hover)]"
                     }`}
@@ -512,7 +569,7 @@ export default function App() {
               })}
               {paletteItems.length === 0 && (
                 <div className="px-6 py-8 text-center text-sm text-[var(--text-tertiary)]">
-                  No results for "{query}"
+                  {t("palette.noResults", { query })}
                 </div>
               )}
             </div>
@@ -548,7 +605,7 @@ export default function App() {
             <div className="space-y-1">
               {NAV.filter((n) => n.key).map((n) => (
                 <div key={n.id} className="flex h-8 items-center justify-between">
-                  <span className="text-sm text-[var(--text-secondary)]">{n.label}</span>
+                  <span className="text-sm text-[var(--text-secondary)]">{navLabelFor(t, n.id)}</span>
                   <kbd>{n.key}</kbd>
                 </div>
               ))}
