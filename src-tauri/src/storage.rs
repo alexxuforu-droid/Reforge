@@ -4,8 +4,29 @@ use std::path::{Path, PathBuf};
 use tauri::{Emitter, State};
 
 use crate::error::AppError;
+
+/// Retry a transient IO operation. Defender real-time scanning or the indexer
+/// briefly holds a just-written file (ERROR_SHARING_VIOLATION for readers AND
+/// writers) — a read-modify-write cycle that hits one silently resets the
+/// stored data (the flaky undo-log cap test under parallel IO is the canary).
+/// NotFound fails fast — that's a genuinely missing file, not interference.
+fn retry_io<T>(mut op: impl FnMut() -> std::io::Result<T>) -> std::io::Result<T> {
+    let mut attempt = 0u32;
+    loop {
+        match op() {
+            Ok(v) => return Ok(v),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Err(e),
+            Err(e) if attempt >= 5 => return Err(e),
+            Err(_) => {
+                std::thread::sleep(std::time::Duration::from_millis(2u64 << attempt));
+                attempt += 1;
+            }
+        }
+    }
+}
+
 pub fn load_json<T: DeserializeOwned>(path: &Path, default: T) -> T {
-    match std::fs::read_to_string(path) {
+    match retry_io(|| std::fs::read_to_string(path)) {
         Ok(s) => serde_json::from_str(&s).unwrap_or(default),
         Err(_) => default,
     }
@@ -23,7 +44,7 @@ pub fn save_json<T: Serialize>(path: &Path, value: &T) -> Result<(), AppError> {
         std::fs::create_dir_all(parent).map_err(|e| io_err(path, e))?;
     }
     let s = serde_json::to_string_pretty(value).map_err(|e| AppError::Command(e.to_string()))?;
-    std::fs::write(path, s).map_err(|e| io_err(path, e))
+    retry_io(|| std::fs::write(path, s.clone())).map_err(|e| io_err(path, e))
 }
 
 pub fn now_millis() -> u64 {
