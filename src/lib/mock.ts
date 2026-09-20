@@ -546,6 +546,23 @@ async function mockCallInner<T>(cmd: string, args: Record<string, unknown> = {})
       return handleTune(cmd, s, args, mockCall) as Promise<T>;
     case "list_registry_values":
       return handleTune(cmd, s, args, mockCall) as Promise<T>;
+    case "read_registry_value": {
+      // X-7 — mirrors system::read_registry_value_in: only exact
+      // (path, name) allowlist pairs resolve; anything else rejects like the
+      // Rust AppError::Invalid so the preview honors the same boundary.
+      // (Unregistered in lib.rs invoke_handler until the integration wave.)
+      const path = String(args.path ?? "");
+      const name = String(args.name ?? "");
+      const canned: Record<string, { value: string; kind: string }> = {
+        "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize!AppsUseLightTheme": { value: "0", kind: "DWORD" },
+        "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize!ColorPrevalence": { value: "1", kind: "DWORD" },
+        "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced!TaskbarAl": { value: "1", kind: "DWORD" },
+        "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced!TaskbarSi": { value: "1", kind: "DWORD" },
+      };
+      const hit = canned[`${path.trim()}!${name.trim()}`];
+      if (!hit) throw new Error(`Registry path is not in the read-only allowlist.`);
+      return { path: path.trim(), name: name.trim(), ...hit } as unknown as Promise<T>;
+    }
     case "get_update_config":
       return handleShare(cmd, s, args) as Promise<T>;
     case "set_update_config":

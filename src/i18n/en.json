@@ -146,6 +146,10 @@
   "settings.advanced.missing": "not created yet",
   "settings.advanced.registry": "Registry (read-only)",
   "settings.advanced.registry.subtitle": "Four look-and-feel values Reforge reads from Windows — shown here, never written",
+  "settings.advanced.registry.loading": "Loading registry values…",
+  "settings.advanced.registry.empty": "No registry values could be read on this system.",
+  "settings.advanced.registry.name": "Name",
+  "settings.advanced.registry.value": "Value",
 
   "power.title": "Power & battery",
   "power.subtitle": "Plan, screen-off timers and battery health — every change reversible from History",

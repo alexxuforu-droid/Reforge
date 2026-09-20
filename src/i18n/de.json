@@ -146,6 +146,10 @@
   "settings.advanced.missing": "noch nicht erstellt",
   "settings.advanced.registry": "Registrierung (schreibgeschützt)",
   "settings.advanced.registry.subtitle": "Vier Design-Werte, die Reforge aus Windows liest – hier gezeigt, nie geschrieben",
+  "settings.advanced.registry.loading": "Registrierungswerte werden geladen …",
+  "settings.advanced.registry.empty": "Auf diesem System konnten keine Registrierungswerte gelesen werden.",
+  "settings.advanced.registry.name": "Name",
+  "settings.advanced.registry.value": "Wert",
 
   "power.title": "Energie & Akku",
   "power.subtitle": "Plan, Bildschirm-Timeouts und Akkugesundheit — jede Änderung aus dem Verlauf reversibel",

@@ -38,7 +38,7 @@ export default function Settings() {
   // X-7 — power-user config inventory (read-only file list).
   const { data: configFiles, error: configFilesError } = useLoad<ConfigFile[]>("list_config_files");
   // X-7 — read-only registry view (fixed allowlist, never writes).
-  const { data: registryValues, error: registryError } = useLoad<RegistryValue[]>("list_registry_values");
+  const { data: registryValues, error: registryError, loading: registryLoading } = useLoad<RegistryValue[]>("list_registry_values");
 
   // S12.1 — auto-updater: check → verified download → "restart to update" banner.
   const { data: updateCfg, refresh: refreshUpdateCfg } = useLoad<UpdateConfig>("get_update_config");
@@ -1112,14 +1112,36 @@ export default function Settings() {
           <div className="mb-1 text-2xs font-medium uppercase tracking-wider text-[var(--text-tertiary)]">{t("settings.advanced.registry")}</div>
           <div className="mb-2 text-2xs text-[var(--text-tertiary)]">{t("settings.advanced.registry.subtitle")}</div>
           {registryError && <InlineAlert>{registryError}</InlineAlert>}
-          <div className="space-y-1">
-            {(registryValues ?? []).map((r) => (
-              <div key={`${r.path}!${r.name}`} className="flex items-baseline justify-between gap-3 border-b border-[var(--border-subtle)] py-1 last:border-0">
-                <span className="min-w-0 truncate font-mono text-xs text-[var(--text-secondary)]" title={`${r.path}!${r.name}`}>{r.name}</span>
-                <span className="shrink-0 font-mono text-xs text-[var(--text-primary)]">{r.value} <span className="text-[var(--text-tertiary)]">{r.kind}</span></span>
-              </div>
-            ))}
-          </div>
+          {/* Read-only registry table: loading / empty / error / populated.
+              Static content — no animation tokens, so reduced-motion is honored
+              trivially. The region wrapper is keyboard-focusable for scrolling. */}
+          {registryLoading && !registryValues && !registryError ? (
+            <p className="text-2xs text-[var(--text-tertiary)]" role="status">{t("settings.advanced.registry.loading")}</p>
+          ) : (registryValues ?? []).length === 0 ? (
+            !registryError ? (
+              <p className="text-2xs text-[var(--text-tertiary)]">{t("settings.advanced.registry.empty")}</p>
+            ) : null
+          ) : (
+            <div role="region" aria-label={t("settings.advanced.registry")} tabIndex={0} className="overflow-x-auto">
+              <table className="w-full border-collapse text-left">
+                <caption className="sr-only">{t("settings.advanced.registry.subtitle")}</caption>
+                <thead>
+                  <tr>
+                    <th scope="col" className="pb-1 pr-3 text-2xs font-medium uppercase tracking-wider text-[var(--text-tertiary)]">{t("settings.advanced.registry.name")}</th>
+                    <th scope="col" className="pb-1 text-2xs font-medium uppercase tracking-wider text-[var(--text-tertiary)]">{t("settings.advanced.registry.value")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(registryValues ?? []).map((r) => (
+                    <tr key={`${r.path}!${r.name}`} className="border-b border-[var(--border-subtle)] last:border-0">
+                      <th scope="row" className="truncate py-1 pr-3 font-mono text-xs font-normal text-[var(--text-secondary)]" title={`${r.path}!${r.name}`}>{r.name}</th>
+                      <td className="py-1 font-mono text-xs text-[var(--text-primary)]">{r.value} <span className="text-[var(--text-tertiary)]">{r.kind}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </Section>
 

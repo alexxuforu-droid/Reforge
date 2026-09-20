@@ -146,6 +146,10 @@
   "settings.advanced.missing": "aún no creado",
   "settings.advanced.registry": "Registro (solo lectura)",
   "settings.advanced.registry.subtitle": "Cuatro valores de apariencia que Reforge lee de Windows — se muestran aquí, nunca se escriben",
+  "settings.advanced.registry.loading": "Cargando valores del registro…",
+  "settings.advanced.registry.empty": "No se pudo leer ningún valor del registro en este sistema.",
+  "settings.advanced.registry.name": "Nombre",
+  "settings.advanced.registry.value": "Valor",
 
   "power.title": "Energía y batería",
   "power.subtitle": "Plan, temporizadores de apagado y salud de la batería — todo reversible desde el Historial",
