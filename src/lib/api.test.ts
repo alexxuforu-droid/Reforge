@@ -46,6 +46,7 @@ const COMMANDS = [
   "shell_set_taskbar_autohide", "shell_set_taskbar_color_match", "shell_get_pending_state",
   "shell_apply_pending_restart", "shell_revert_pending", "get_capability_matrix",
   "get_undo_log", "revert_entry", "snapshot_now", "list_snapshots", "restore_snapshot",
+  "get_undo_digest", "get_dashboard_summary",
   "bundle_diagnostics",
   "apply_style", "get_applied_style",
   "get_favorites", "set_favorite",
@@ -221,5 +222,56 @@ describe("persistence", () => {
     await call("apply_style", { style: STATIC_STYLE });
     await new Promise((r) => setTimeout(r, 250)); // let debounced persist flush
     expect(localStorage.getItem("reforge-mock-v1")).toBeDefined();
+  });
+});
+
+describe("v1.1 Task 2 digest + summary", () => {
+  it("mock exposes get_undo_digest with counts only", async () => {
+    const d: any = await call("get_undo_digest");
+    expect(typeof d.total).toBe("number");
+    expect(d.byDay).toBeUndefined(); // snake_case contract, not camelCase
+    expect(d.by_day).toBeDefined();
+    expect(d.by_kind).toBeDefined();
+    expect(Array.isArray(d.recent)).toBe(true);
+    expect(JSON.stringify(d).length).toBeLessThan(5000);
+  });
+
+  it("digest recent caps at 5 and never carries data payloads", async () => {
+    for (let i = 0; i < 7; i++) {
+      await call("set_accent_color", { hex: `#1100${i}${i}` });
+    }
+    const d: any = await call("get_undo_digest");
+    expect(d.total).toBeGreaterThanOrEqual(7);
+    expect(d.recent.length).toBe(5);
+    for (const r of d.recent) {
+      expect(r).not.toHaveProperty("data");
+      expect(typeof r.id).toBe("string");
+      expect(typeof r.ts).toBe("number");
+      expect(typeof r.kind).toBe("string");
+      expect(typeof r.description).toBe("string");
+    }
+    expect(JSON.stringify(d)).not.toContain('"data"');
+    // kind + day counts agree with the total
+    const kindSum = Object.values(d.by_kind as Record<string, number>).reduce((a, b) => a + b, 0);
+    const daySum = Object.values(d.by_day as Record<string, number>).reduce((a, b) => a + b, 0);
+    expect(kindSum).toBe(d.total);
+    expect(daySum).toBe(d.total);
+    // the diet pays: digest bytes << full-log bytes
+    const full: any = await call("get_undo_log");
+    expect(JSON.stringify(d).length).toBeLessThan(JSON.stringify(full).length);
+  });
+
+  it("mock exposes get_dashboard_summary with the 4-field shape", async () => {
+    const s: any = await call("get_dashboard_summary");
+    expect(typeof s.health).toBe("number");
+    expect(typeof s.personalization).toBe("number");
+    expect(typeof s.storage_freed_mb).toBe("number");
+    expect(typeof s.undo_total).toBe("number");
+    // summary agrees with its sources
+    const metrics: any = await call("get_dashboard_metrics");
+    expect(s.personalization).toBe(metrics.personalization_score);
+    const log: any[] = await call("get_undo_log");
+    expect(s.undo_total).toBe(log.length);
+    expect(JSON.stringify(s).length).toBeLessThan(500);
   });
 });

@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { call, fmt, fmtAge } from "../lib/api";
-import { bucketByDay, bucketByMonth } from "../lib/trends";
 import { riskScore } from "../lib/risk";
 import { useLoad } from "../lib/useLoad";
 import { useI18n } from "../i18n";
 import { useFinePointer, useReducedMotion } from "../components/motion/useMotionPrefs";
-import type { DashboardMetrics, HealthScore, SystemInfo, UndoEntry } from "../lib/types";
+import type { DashboardMetrics, HealthScore, SystemInfo, UndoDigest } from "../lib/types";
 import { InlineAlert, Meter, ScoreRing, Section, StatCard, StatusDot, toast } from "../components/ui";
 import {
   NavMakeover, IconCpu, IconHardDrive, IconClock, IconShieldCheck,
@@ -27,7 +26,10 @@ export default function Dashboard({ onNavigate = () => {} }: { onNavigate?: (v: 
   // S2.2 — state-critical loads through useLoad: one toast per command per
   // session on first failure + a real error surface (InlineAlert) per section.
   const { data: metrics, error: metricsError } = useLoad<DashboardMetrics>("get_dashboard_metrics");
-  const { data: recent, error: recentError } = useLoad<UndoEntry[]>("get_undo_log");
+  // v1.1 Task 2 — hot path uses the digest (counts + top-5, ~0.6 KB) instead
+  // of the full undo log (~336 KB). History.tsx stays on get_undo_log: it is
+  // the only consumer that reads entry `data`.
+  const { data: recent, error: recentError } = useLoad<UndoDigest>("get_undo_digest");
   // P1-8 — one-call security digest from the Security Center.
   const { data: digest } = useLoad<SecurityDigest>("security_get_digest");
   // D4 — risk score inputs: flagged autorun entries (already suspicious items).
@@ -49,13 +51,14 @@ export default function Dashboard({ onNavigate = () => {} }: { onNavigate?: (v: 
     call<SystemInfo>("get_system_info").then(setSys).catch(() => toast("Could not load system info", "err"));
   }, []);
 
-  const recentList = (recent ?? []).slice(0, 5);
-  // X-6 — activity trends from the local undo log (no new collection).
-  const trendBuckets = useMemo(() => bucketByDay(recent ?? [], 14), [recent]);
+  const recentList = recent?.recent ?? [];
+  // X-6 — activity trends from the digest's by_day counts (same bar labels as
+  // the old full-log bucketing, no payload bytes over IPC).
+  const trendBuckets = useMemo(() => lastDaysFromByDay(recent?.by_day ?? {}, 14), [recent]);
   const trendPeak = Math.max(1, ...trendBuckets.map((b) => b.count));
-  const monthBuckets = useMemo(() => bucketByMonth(recent ?? [], 6), [recent]);
+  const monthBuckets = useMemo(() => lastMonthsFromByDay(recent?.by_day ?? {}, 6), [recent]);
   const monthPeak = Math.max(1, ...monthBuckets.map((b) => b.count));
-  const latestChange = (recent ?? [])[0] ?? null;
+  const latestChange = recent?.recent[0] ?? null;
 
   const disk = sys?.disks.length ? [...sys.disks].sort((a, b) => a.free_pct - b.free_pct)[0] : null;
   const ramPct = sys ? ((sys.ram_total - sys.ram_used) / sys.ram_total) * 100 : 0;
@@ -275,7 +278,7 @@ export default function Dashboard({ onNavigate = () => {} }: { onNavigate?: (v: 
 
       {/* Activity Trends (X-6) — changes per day from your local History */}
       <Section title={t("analytics.title")} subtitle={t("analytics.subtitle")}>
-        {(recent ?? []).length === 0 ? (
+        {(recent?.total ?? 0) === 0 ? (
           <div className="empty-state">
             {t("analytics.empty")}
           </div>
@@ -374,6 +377,35 @@ function fmtTime(secs: number): string {
   if (secs >= 3600) return `${(secs / 3600).toFixed(1)} hrs`;
   if (secs >= 60) return `${Math.round(secs / 60)} min`;
   return `${secs}s`;
+}
+
+// v1.1 Task 2 — bar buckets straight from the digest's by_day (YYYY-MM-DD).
+// Same labels the full-log bucketByDay/bucketByMonth produced ("M/D", "Mon").
+// Caveat: Rust keys days in UTC while these look up local days, so entries
+// logged near local midnight can sit one bar off vs the old exact-ts bucketing.
+function lastDaysFromByDay(byDay: Record<string, number>, days = 14): { label: string; count: number }[] {
+  const out: { label: string; count: number }[] = [];
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(now.getTime() - i * 86400000);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    out.push({ label: `${d.getMonth() + 1}/${d.getDate()}`, count: byDay[key] ?? 0 });
+  }
+  return out;
+}
+
+function lastMonthsFromByDay(byDay: Record<string, number>, months = 6): { label: string; count: number }[] {
+  const now = new Date();
+  const out: { label: string; count: number }[] = [];
+  for (let i = months - 1; i >= 0; i--) {
+    const ref = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const prefix = `${ref.getFullYear()}-${String(ref.getMonth() + 1).padStart(2, "0")}`;
+    let count = 0;
+    for (const [k, v] of Object.entries(byDay)) if (k.startsWith(prefix)) count += v;
+    out.push({ label: ref.toLocaleString("en-US", { month: "short" }), count });
+  }
+  return out;
 }
 
 // Magnetic "Start makeover" nudge (Task 3): the button leans toward the

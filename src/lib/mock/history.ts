@@ -16,6 +16,27 @@ export async function handle<T>(cmd: string, s: Store, args: Record<string, unkn
   switch (cmd) {
     case "get_undo_log":
       return s.undo.map((e) => ({ ...e })) as T;
+    // v1.1 Task 2 — digest parity with undo.rs: counts + top-5 identity rows,
+    // never the `data` payloads. Day keys are local YYYY-MM-DD here (preview
+    // only); Rust uses UTC — edge-of-midnight buckets may differ by one day.
+    case "get_undo_digest": {
+      const by_kind: Record<string, number> = {};
+      const by_day: Record<string, number> = {};
+      for (const e of s.undo) {
+        by_kind[e.kind] = (by_kind[e.kind] ?? 0) + 1;
+        const d = new Date(e.ts);
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        by_day[key] = (by_day[key] ?? 0) + 1;
+      }
+      return {
+        total: s.undo.length,
+        by_kind,
+        by_day,
+        recent: s.undo
+          .slice(0, 5)
+          .map(({ id, ts, kind, description, revertible }) => ({ id, ts, kind, description, revertible })),
+      } as T;
+    }
     case "get_performance": {
       perf.cpu = clamp(perf.cpu + (Math.random() - 0.5) * 14, 3, 96);
       perf.ramFree = clamp(perf.ramFree + (Math.random() - 0.5) * 6, 20, 88);
@@ -194,6 +215,22 @@ export async function handle<T>(cmd: string, s: Store, args: Record<string, unkn
         files_organized: 14,
         time_saved_secs: 14 * 4 + Math.floor(sFreed / (1024 * 1024)) * 3,
         active_features: feats,
+      } as T;
+    }
+    // v1.1 Task 2 — summary parity with dashboard.rs: the same
+    // personalization/storage math as get_dashboard_metrics plus the real mock
+    // health score and the undo count. No string lists, no payloads.
+    case "get_dashboard_summary": {
+      const metrics = await call<{
+        personalization_score: number;
+        storage_freed: number;
+      }>("get_dashboard_metrics");
+      const health = await call<{ score: number }>("get_health_score");
+      return {
+        health: health.score,
+        personalization: metrics.personalization_score,
+        storage_freed_mb: Math.round((metrics.storage_freed / 1_048_576) * 10) / 10,
+        undo_total: s.undo.length,
       } as T;
     }
     case "get_perf_history": {

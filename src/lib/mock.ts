@@ -78,6 +78,8 @@ async function mockCallInner<T>(cmd: string, args: Record<string, unknown> = {})
       return handleTune(cmd, s, args, mockCall) as Promise<T>;
     case "get_undo_log":
       return handleHistory(cmd, s, args, mockCall) as Promise<T>;
+    case "get_undo_digest":
+      return handleHistory(cmd, s, args, mockCall) as Promise<T>;
     case "get_performance":
       return handleHistory(cmd, s, args, mockCall) as Promise<T>;
     case "get_user_folders":
@@ -327,6 +329,8 @@ async function mockCallInner<T>(cmd: string, args: Record<string, unknown> = {})
     case "set_blue_light":
       return handleHistory(cmd, s, args, mockCall) as Promise<T>;
     case "get_dashboard_metrics":
+      return handleHistory(cmd, s, args, mockCall) as Promise<T>;
+    case "get_dashboard_summary":
       return handleHistory(cmd, s, args, mockCall) as Promise<T>;
     case "get_perf_history":
       return handleHistory(cmd, s, args, mockCall) as Promise<T>;

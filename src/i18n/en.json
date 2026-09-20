@@ -181,5 +181,26 @@
   "organize.duplicates.keepOldest": "Keep oldest",
   "organize.duplicates.autoResolve": "Auto-resolve all",
   "organize.duplicates.resolving": "Resolving…",
-  "organize.duplicates.nothingToResolve": "Every group already has a single survivor."
+  "organize.duplicates.nothingToResolve": "Every group already has a single survivor.",
+
+  "security.title": "Security & Threat Protection",
+  "security.subtitle": "Everything reads from Windows' real security stack. No invented verdicts, no fake green checkmarks.",
+  "security.healthTitle": "Security Health",
+  "security.healthSubtitle": "Real-time status from Windows Security Center and Defender",
+  "security.quickScan": "Quick Scan",
+  "security.fullScan": "Full Scan",
+  "security.updateDefs": "Update Defs",
+  "security.restore": "Restore",
+  "security.remove": "Remove",
+  "security.noExclusions": "No exclusions — Defender is scanning everything.",
+  "security.recentScans": "Recent scans",
+  "security.threatTitle": "Threat & Quarantine Review",
+  "security.flaggedTitle": "Flagged Auto-Start Entries",
+  "security.flaggedSubtitle": "Auto-start items that match malware persistence patterns — review, don't panic",
+  "security.pauseTitle": "Temporarily Pause Real-Time Protection",
+  "security.pauseSubtitle": "For installing something Defender mis-flags — always re-enables itself automatically",
+  "security.hardeningTitle": "Protection Hardening",
+  "security.hardeningSubtitle": "Controlled Folder Access (ransomware protection) and Attack Surface Reduction rules",
+  "security.exclusionsTitle": "Defender Exclusions",
+  "security.privacyTitle": "Privacy Audit"
 }

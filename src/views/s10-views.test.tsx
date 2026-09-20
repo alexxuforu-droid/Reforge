@@ -1,7 +1,7 @@
 // S10 — capability views. Drives Power, Accessibility, Gaming profiles and
 // Focus sessions through the mock backend, asserting real command round-trips.
 import { describe, expect, it } from "vitest";
-import { act, fireEvent, render, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import Power from "./Power";
 import Accessibility from "./Accessibility";
 import Gaming from "./Gaming";
@@ -141,5 +141,46 @@ describe("D1 per-app looks", () => {
     await sleep(500);
     rules = await mockCall<{ exe: string; look_id: string }[]>("list_app_look_rules", {});
     expect(rules).toEqual([]);
+  });
+});
+
+describe("Task 6/7 palette keyboard + status bar", () => {
+  it("palette ArrowDown sets active item, Enter runs it", { timeout: 60_000 }, async () => {
+    localStorage.setItem("reforge-wizard-seen-v1", "1");
+    const { default: App } = await import("../App");
+    const { container } = render(<App />);
+    // Open the palette with Ctrl+K.
+    await act(async () => {
+      fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+    });
+    const input = container.querySelector('input[placeholder*="Find a setting"]') as HTMLInputElement | null;
+    expect(input).not.toBeNull();
+    // ArrowDown moves the active item from index 0 to index 1.
+    await act(async () => {
+      fireEvent.keyDown(input!, { key: "ArrowDown" });
+    });
+    const items = Array.from(container.querySelectorAll("[data-palette-active]"));
+    expect(items.length).toBeGreaterThan(1);
+    const active = container.querySelector("[data-palette-active='true']");
+    expect(active).toBeTruthy();
+    expect(items.indexOf(active!)).toBe(1);
+    // Enter runs the active item and closes the palette.
+    await act(async () => {
+      fireEvent.keyDown(input!, { key: "Enter" });
+    });
+    expect(container.querySelector("[data-testid='palette']")).toBeNull();
+  });
+
+  it("status bar renders on synthetic progress event", { timeout: 60_000 }, async () => {
+    localStorage.setItem("reforge-wizard-seen-v1", "1");
+    const { default: App } = await import("../App");
+    render(<App />);
+    await act(async () => {
+      fireEvent(
+        window,
+        new CustomEvent("reforge:test-scan-progress", { detail: { scanned: 1, total: 2 } }),
+      );
+    });
+    expect(await screen.findByTestId("status-bar")).toHaveTextContent(/1.*2|50%/);
   });
 });

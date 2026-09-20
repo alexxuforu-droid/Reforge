@@ -25,16 +25,22 @@ function sceneTiles(section: HTMLElement): HTMLElement[] {
 describe("S7.6 scene grid media budget", () => {
   it("mounts ZERO canvases on load", { timeout: 60_000 }, async () => {
     const { container } = render(<Makeover />);
-    const section = sceneSection(container);
-    await waitFor(() => expect(sceneTiles(section).length).toBeGreaterThan(10));
+    let section!: HTMLElement;
+    await waitFor(() => {
+      section = sceneSection(container);
+      expect(sceneTiles(section).length).toBeGreaterThan(10);
+    });
     expect(section.querySelectorAll("canvas")).toHaveLength(0);
     expect(section.querySelectorAll("img, video")).toHaveLength(0);
   });
 
   it("mounts exactly ONE canvas on hover and unmounts it on unhover", { timeout: 60_000 }, async () => {
     const { container } = render(<Makeover />);
-    const section = sceneSection(container);
-    await waitFor(() => expect(sceneTiles(section).length).toBeGreaterThan(10));
+    let section!: HTMLElement;
+    await waitFor(() => {
+      section = sceneSection(container);
+      expect(sceneTiles(section).length).toBeGreaterThan(10);
+    });
     const tiles = sceneTiles(section);
     const first = tiles[0];
     expect(first.querySelector("canvas")).toBeNull();

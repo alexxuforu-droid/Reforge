@@ -647,6 +647,34 @@ export interface DashboardMetrics {
   active_features: string[];
 }
 
+// ---- v1.1 Task 2: IPC hot-path diet ----
+
+/** Identity-only undo row (no `data` payload). Mirrors Rust UndoDigestEntry. */
+export interface UndoDigestEntry {
+  id: string;
+  ts: number;
+  kind: string;
+  description: string;
+  revertible: boolean;
+}
+
+/** Counts + top-5 for hot paths. Mirrors Rust UndoDigest (snake_case kept). */
+export interface UndoDigest {
+  total: number;
+  by_kind: Record<string, number>;
+  /** Day counts keyed YYYY-MM-DD (UTC, see undo.rs day_key). */
+  by_day: Record<string, number>;
+  recent: UndoDigestEntry[];
+}
+
+/** One-call boot/hot-path composite. Mirrors Rust DashboardSummary. */
+export interface DashboardSummary {
+  health: number;
+  personalization: number;
+  storage_freed_mb: number;
+  undo_total: number;
+}
+
 // ---- Marketplace / packs ----
 
 export interface BundleComponentDef {

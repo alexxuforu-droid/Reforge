@@ -181,5 +181,25 @@
   "organize.duplicates.keepOldest": "Ältestes behalten",
   "organize.duplicates.autoResolve": "Alle automatisch auflösen",
   "organize.duplicates.resolving": "Wird aufgelöst …",
-  "organize.duplicates.nothingToResolve": "Jede Gruppe hat bereits genau einen Überlebenden."
+  "organize.duplicates.nothingToResolve": "Jede Gruppe hat bereits genau einen Überlebenden.",
+
+  "security.subtitle": "Alles wird aus dem echten Windows-Sicherheitsstapel gelesen. Keine erfundenen Urteile, keine falschen grünen Häkchen.",
+  "security.healthTitle": "Sicherheitsstatus",
+  "security.healthSubtitle": "Echtzeitstatus aus dem Windows-Sicherheitscenter und Defender",
+  "security.quickScan": "Schnellscan",
+  "security.fullScan": "Vollständiger Scan",
+  "security.updateDefs": "Definitionen aktualisieren",
+  "security.restore": "Wiederherstellen",
+  "security.remove": "Entfernen",
+  "security.noExclusions": "Keine Ausschlüsse — Defender prüft alles.",
+  "security.recentScans": "Letzte Scans",
+  "security.threatTitle": "Bedrohungs- & Quarantäneübersicht",
+  "security.flaggedTitle": "Markierte Autostart-Einträge",
+  "security.flaggedSubtitle": "Autostart-Einträge mit Malware-Persistenzmustern — prüfen, keine Panik",
+  "security.pauseTitle": "Echtzeitschutz vorübergehend pausieren",
+  "security.pauseSubtitle": "Zum Installieren fälschlich erkannter Software — reaktiviert sich automatisch",
+  "security.hardeningTitle": "Schutzhärtung",
+  "security.hardeningSubtitle": "Kontrollierter Ordnerzugriff (Ransomware-Schutz) und Regeln zur Angriffsflächenreduzierung",
+  "security.exclusionsTitle": "Defender-Ausschlüsse",
+  "security.privacyTitle": "Privatsphärenprüfung"
 }

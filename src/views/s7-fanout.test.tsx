@@ -47,7 +47,7 @@ describe("S7.2 Makeover mount fan-out", () => {
       "get_wallpaper_history",
       "get_capability_matrix",
       "get_favorites", // studio favorite buttons
-      "get_undo_log", // Quick History strip
+      "get_undo_digest", // Quick History strip (digest, not the full 200-entry log)
     ];
     // Every eager command fired exactly once, nothing else on mount.
     expect(new Set(cmds)).toEqual(new Set(eager));

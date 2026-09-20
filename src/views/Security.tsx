@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { errorCopy, call, callWithTimeout } from "../lib/api";
 import { useLoad } from "../lib/useLoad";
+import { useI18n } from "../i18n";
 import type { AuditItem, PermissionState, PrivacyPolicyItem, UsbDevice } from "../lib/types";
 import { InlineAlert, Modal, Progress, Section, Select, StatusDot, Toggle, toast } from "../components/ui";
 import {
@@ -90,6 +91,7 @@ function DefenderLayerRow({ label, on, warning }: { label: string; on: boolean |
 }
 
 export default function Security() {
+  const { t } = useI18n();
   const [_items, setItems] = useState<AuditItem[] | null>(null);
   const [scanning, setScanning] = useState(false);
   const [health, setHealth] = useState<HealthStatus | null>(null);
@@ -253,9 +255,9 @@ export default function Security() {
     <div className="space-y-4">
       <header className="page-head flex items-start justify-between gap-4">
         <div>
-          <h1 className="page-title">Security & Threat Protection</h1>
+          <h1 className="page-title">{t("security.title")}</h1>
           <p className="page-subtitle">
-            Everything reads from Windows' real security stack. No invented verdicts, no fake green checkmarks.
+            {t("security.subtitle")}
           </p>
         </div>
         <button className="btn-ghost shrink-0" onClick={run} disabled={scanning}>
@@ -265,7 +267,7 @@ export default function Security() {
 
       {/* Security Health Dashboard */}
       {health && (
-        <Section title="Security Health" subtitle="Real-time status from Windows Security Center and Defender">
+        <Section title={t("security.healthTitle")} subtitle={t("security.healthSubtitle")}>
           <div className="flex items-center gap-6">
             <div
               className={`rounded-2xl border px-6 py-4 text-center ${HEALTH_COLORS[health.overall_status] ?? HEALTH_COLORS.unknown}`}
@@ -324,14 +326,14 @@ export default function Security() {
                 disabled={scanActive}
                 onClick={() => startScan("quick")}
               >
-                <IconScan size={13} /> Quick Scan
+                <IconScan size={13} /> {t("security.quickScan")}
               </button>
               <button
                 className="btn-ghost text-xs"
                 disabled={scanActive}
                 onClick={() => startScan("full")}
               >
-                <IconScan size={13} /> Full Scan
+                <IconScan size={13} /> {t("security.fullScan")}
               </button>
               <button
                 className="btn-ghost text-xs"
@@ -341,7 +343,7 @@ export default function Security() {
                     .catch((e) => toast(errorCopy(e), "err"));
                 }}
               >
-                Update Defs
+                {t("security.updateDefs")}
               </button>
             </div>
           </div>
@@ -415,7 +417,7 @@ export default function Security() {
           {/* Scan history */}
           {scanHist.length > 0 && (
             <div className="mt-4 space-y-1.5">
-              <div className="text-xs font-medium text-[var(--text-tertiary)]">Recent scans</div>
+              <div className="text-xs font-medium text-[var(--text-tertiary)]">{t("security.recentScans")}</div>
               {scanHist.slice(0, 5).map((s, i) => (
                 <div key={i} className="flex items-center gap-3 text-xs text-[var(--text-secondary)]">
                   <span className="w-16 shrink-0 capitalize">{s.scan_type}</span>
@@ -436,36 +438,36 @@ export default function Security() {
 
       {/* Threat & Quarantine Review */}
       {threats.length > 0 && (
-        <Section title="Threat & Quarantine Review" subtitle={`${threats.length} items from Defender's real detection log`}>
+        <Section title={t("security.threatTitle")} subtitle={`${threats.length} items from Defender's real detection log`}>
           <div className="space-y-2">
-            {threats.slice(0, 10).map((t) => (
+            {threats.slice(0, 10).map((threat) => (
               <div
-                key={t.id}
+                key={threat.id}
                 className="rounded-xl border border-[var(--border-default)] bg-[var(--surface-overlay)] px-4 py-3"
               >
                 <div className="flex items-start justify-between">
-                  <button className="min-w-0 flex-1 text-left" onClick={() => toggleThreatDetail(t)}>
+                  <button className="min-w-0 flex-1 text-left" onClick={() => toggleThreatDetail(threat)}>
                     <div className="flex items-center gap-1.5">
-                      {expandedThreat === t.id ? <IconChevronUp size={12} /> : <IconChevronDown size={12} />}
+                      {expandedThreat === threat.id ? <IconChevronUp size={12} /> : <IconChevronDown size={12} />}
                       <span className="text-sm font-medium text-[var(--text-primary)]">
-                        {t.name || "Unknown process"}
+                        {threat.name || "Unknown process"}
                       </span>
                     </div>
-                    <div className="ml-4 text-xs text-[var(--text-tertiary)]">{t.category_description}</div>
+                    <div className="ml-4 text-xs text-[var(--text-tertiary)]">{threat.category_description}</div>
                     <div className="ml-4 mt-1 text-2xs text-[var(--text-tertiary)]">
-                      State: {t.state} · Severity: {t.severity} · {t.date.substring(0, 10)}
+                      State: {threat.state} · Severity: {threat.severity} · {threat.date.substring(0, 10)}
                     </div>
                   </button>
                   <div className="flex gap-1.5">
                     <button
                       className="btn-ghost text-2xs"
                       onClick={() =>
-                        call("security_restore_threat", { threat_id: t.id })
+                        call("security_restore_threat", { threat_id: threat.id })
                           .then((r: any) => toast(r))
                           .catch((e) => toast(errorCopy(e), "err"))
                       }
                     >
-                      Restore
+                      {t("security.restore")}
                     </button>
                     <button
                       className="btn-ghost text-2xs text-[var(--status-danger)]"
@@ -475,19 +477,19 @@ export default function Security() {
                           body: "Defender quarantine actions are one-way — this is not reversible.",
                           confirmLabel: "Remove",
                           run: () =>
-                            call("security_remove_threat", { threat_id: t.id })
+                            call("security_remove_threat", { threat_id: threat.id })
                               .then((r: any) => toast(r))
                               .catch((e) => toast(errorCopy(e), "err")),
                         })
                       }
                     >
-                      Remove
+                      {t("security.remove")}
                     </button>
                   </div>
                 </div>
 
                 {/* P1-2 — threat detail drill-down */}
-                {expandedThreat === t.id && (
+                {expandedThreat === threat.id && (
                   <div className="mt-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-base)] p-3">
                     {threatDetailError && <InlineAlert>{threatDetailError}</InlineAlert>}
                     {threatDetail && (
@@ -514,7 +516,7 @@ export default function Security() {
 
       {/* P1-9 — flagged auto-start entries */}
       {flagged.length > 0 && (
-        <Section title="Flagged Auto-Start Entries" subtitle="Auto-start items that match malware persistence patterns — review, don't panic">
+        <Section title={t("security.flaggedTitle")} subtitle={t("security.flaggedSubtitle")}>
           <div className="space-y-2">
             {flagged.map((f) => {
               const key = `${f.name}::${f.location}`;
@@ -566,7 +568,7 @@ export default function Security() {
       )}
 
       {/* P1-6 — real-time protection pause */}
-      <Section title="Temporarily Pause Real-Time Protection" subtitle="For installing something Defender mis-flags — always re-enables itself automatically">
+      <Section title={t("security.pauseTitle")} subtitle={t("security.pauseSubtitle")}>
         {rtDisabled.disabled ? (
           <div className="flex items-center gap-3 rounded-lg border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] px-4 py-3">
             <IconTimer size={16} className="shrink-0 text-[var(--status-warning)]" />
@@ -628,7 +630,7 @@ export default function Security() {
       </Section>
 
       {/* Protection Hardening */}
-      <Section title="Protection Hardening" subtitle="Controlled Folder Access (ransomware protection) and Attack Surface Reduction rules">
+      <Section title={t("security.hardeningTitle")} subtitle={t("security.hardeningSubtitle")}>
         <div className="flex items-center gap-4">
           <span className="text-sm text-[var(--text-secondary)]">
             CFA:{" "}
@@ -769,7 +771,7 @@ export default function Security() {
       </Section>
 
       {/* P1-4 — exclusions manager */}
-      <Section title="Defender Exclusions" subtitle="Files, folders, extensions or processes Defender skips — review these regularly, they're a classic malware persistence spot">
+      <Section title={t("security.exclusionsTitle")} subtitle="Files, folders, extensions or processes Defender skips — review these regularly, they're a classic malware persistence spot">
         {exclusionsError && <InlineAlert>{exclusionsError}</InlineAlert>}
         <div className="flex flex-wrap items-center gap-2">
           <Select
@@ -821,19 +823,19 @@ export default function Security() {
                       .catch((e) => toast(errorCopy(e), "err"))
                   }
                 >
-                  <IconTrash size={12} /> Remove
+                  <IconTrash size={12} /> {t("security.remove")}
                 </button>
               </div>
             ))}
           </div>
         )}
         {exclusions.length === 0 && !exclusionsError && (
-          <div className="mt-3 text-xs text-[var(--text-tertiary)]">No exclusions — Defender is scanning everything.</div>
+          <div className="mt-3 text-xs text-[var(--text-tertiary)]">{t("security.noExclusions")}</div>
         )}
       </Section>
 
       {/* Privacy Audit */}
-      <Section title="Privacy Audit" subtitle="Permissions, browser privacy & USB history">
+      <Section title={t("security.privacyTitle")} subtitle="Permissions, browser privacy & USB history">
         {permsError && <InlineAlert>{permsError}</InlineAlert>}
         {privacyError && <InlineAlert>{privacyError}</InlineAlert>}
         {usbError && <InlineAlert>{usbError}</InlineAlert>}

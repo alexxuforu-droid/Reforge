@@ -1,7 +1,8 @@
 // Extracted from views/Makeover.tsx (V2 pillar 2b, zero behavior change).
+// v1.1 Task 2 — reads the digest's top-5 (no `data` payloads over IPC).
 import { useEffect, useState } from "react";
 import { call, swallow } from "../../lib/api";
-import type { UndoEntry } from "../../lib/types";
+import type { UndoDigest } from "../../lib/types";
 
 // ---------------------------------------------------------------------------
 // Quick History — recent theme changes
@@ -11,9 +12,9 @@ export default function QuickHistory() {
   const [entries, setEntries] = useState<{ id: string; description: string; ts: number; kind: string }[]>([]);
 
   useEffect(() => {
-    call<UndoEntry[]>("get_undo_log")
-      .then((log) => setEntries(log.slice(0, 5).map((e) => ({ id: e.id, description: e.description, ts: e.ts, kind: e.kind }))))
-      .catch((e) => swallow("get_undo_log (QuickHistory)", e));
+    call<UndoDigest>("get_undo_digest")
+      .then((d) => setEntries(d.recent.map((e) => ({ id: e.id, description: e.description, ts: e.ts, kind: e.kind }))))
+      .catch((e) => swallow("get_undo_digest (QuickHistory)", e));
   }, []);
 
   if (entries.length === 0) return null;

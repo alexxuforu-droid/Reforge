@@ -181,5 +181,26 @@
   "organize.duplicates.keepOldest": "Conservar el más antiguo",
   "organize.duplicates.autoResolve": "Resolver todo",
   "organize.duplicates.resolving": "Resolviendo…",
-  "organize.duplicates.nothingToResolve": "Cada grupo ya tiene un único superviviente."
+  "organize.duplicates.nothingToResolve": "Cada grupo ya tiene un único superviviente.",
+
+  "security.title": "Seguridad y protección contra amenazas",
+  "security.subtitle": "Todo se lee de la pila de seguridad real de Windows. Sin veredictos inventados ni falsas marcas verdes.",
+  "security.healthTitle": "Estado de seguridad",
+  "security.healthSubtitle": "Estado en tiempo real del Centro de seguridad de Windows y Defender",
+  "security.quickScan": "Escaneo rápido",
+  "security.fullScan": "Escaneo completo",
+  "security.updateDefs": "Actualizar definiciones",
+  "security.restore": "Restaurar",
+  "security.remove": "Quitar",
+  "security.noExclusions": "Sin exclusiones — Defender está analizando todo.",
+  "security.recentScans": "Escaneos recientes",
+  "security.threatTitle": "Revisión de amenazas y cuarentena",
+  "security.flaggedTitle": "Entradas de inicio marcadas",
+  "security.flaggedSubtitle": "Elementos de inicio que coinciden con patrones de persistencia de malware — revísalos, no entres en pánico",
+  "security.pauseTitle": "Pausar temporalmente la protección en tiempo real",
+  "security.pauseSubtitle": "Para instalar algo que Defender marca por error — siempre se reactiva solo",
+  "security.hardeningTitle": "Endurecimiento de la protección",
+  "security.hardeningSubtitle": "Acceso controlado a carpetas (protección contra ransomware) y reglas de reducción de superficie de ataque",
+  "security.exclusionsTitle": "Exclusiones de Defender",
+  "security.privacyTitle": "Auditoría de privacidad"
 }
