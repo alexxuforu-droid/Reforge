@@ -486,6 +486,7 @@ pub fn run() {
             system::bundle_diagnostics,
             system::list_config_files,
             system::list_registry_values,
+            system::read_registry_value,
             // palette
             palette::extract_palette,
             // perf

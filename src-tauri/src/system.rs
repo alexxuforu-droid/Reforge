@@ -493,9 +493,7 @@ pub fn list_registry_values() -> Vec<RegistryValue> {
 /// X-7 — single-value read through the same allowlist. Inputs are trimmed
 /// before the membership check so `" path "` can't slip past it; anything
 /// off-allowlist is rejected with `AppError::Invalid` before touching the
-/// registry. Registration in `lib.rs` invoke_handler belongs to the later
-/// integration wave (out of Task 6 scope) — the allow below lapses then.
-#[allow(dead_code)]
+/// registry.
 #[tauri::command]
 pub fn read_registry_value(path: String, name: String) -> Result<RegistryValue, AppError> {
     read_registry_value_in(path.trim(), name.trim())
