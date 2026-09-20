@@ -32,7 +32,7 @@ function AwayPanel({ entries, t }: { entries: UndoEntry[]; t: TFunc }) {
       </div>
       <ul className="mt-1.5 space-y-0.5">
         {away.slice(0, 3).map((e) => (
-          <li key={e.id} className="truncate text-2xs text-[var(--text-tertiary)]">
+          <li key={e.id} title={e.description} className="truncate text-2xs text-[var(--text-tertiary)]">
             · {e.description} ({fmtAge(e.ts)})
           </li>
         ))}
