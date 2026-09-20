@@ -436,6 +436,9 @@ pub fn spawn_rotation(state: AppState) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // X-3 — the static path shares the video path's monitor-topology rig
+    // (one rig, both paths): resolution is by monitor id, never by index.
+    use crate::wallpaper_video::{resolve_placement, MonitorRect};
 
     fn cfg(enabled: bool, interval_minutes: u32, last: Option<&str>) -> SlideshowConfig {
         SlideshowConfig {
@@ -634,5 +637,57 @@ mod tests {
         );
         // filter off passes everything through untouched
         assert_eq!(filter_for_time(im.clone(), 12 * 60, false).len(), 2);
+    }
+
+    // --- Shared topology rig (X-3): the same scripted add/remove/reorder
+    // coverage as the video path, driven through the one shared
+    // `resolve_placement`. The static apply itself is system-wide
+    // (SystemParametersInfo paints the whole virtual screen), so an
+    // unplugged or unknown pin resolves to None and the caller keeps the
+    // virtual-screen fallback. Rects are physical pixels (tauri
+    // Monitor::position/size), so DPI/scale changes need no code here —
+    // a scale change keeps the same device id and origin.
+    fn topo(names: &[&str]) -> Vec<MonitorRect> {
+        names
+            .iter()
+            .enumerate()
+            .map(|(i, n)| ((*n).to_string(), (i as i32) * 1920, 0, 1920, 1080))
+            .collect()
+    }
+
+    #[test]
+    fn static_reorder_and_removal_resolve_by_monitor_id_not_index() {
+        // A unplugged, B became primary: B keeps its bounds, A is unknown.
+        let after = topo(&["B"]);
+        assert_eq!(
+            resolve_placement(&after, &Some("B".into())),
+            Some((0, 0, 0, 1920, 1080))
+        );
+        // unplugged → None → virtual-screen fallback in the caller
+        assert_eq!(resolve_placement(&after, &Some("A".into())), None);
+    }
+
+    #[test]
+    fn static_reorder_keeps_each_monitors_own_bounds() {
+        let after = topo(&["B", "A"]);
+        assert_eq!(
+            resolve_placement(&after, &Some("A".into())),
+            Some((1, 1920, 0, 1920, 1080))
+        );
+        assert_eq!(resolve_placement(&after, &None), None);
+    }
+
+    #[test]
+    fn static_added_monitor_resolves_by_id() {
+        // C plugged in as a third head: earlier pins still hit their own rects.
+        let after = topo(&["B", "A", "C"]);
+        assert_eq!(
+            resolve_placement(&after, &Some("C".into())),
+            Some((2, 3840, 0, 1920, 1080))
+        );
+        assert_eq!(
+            resolve_placement(&after, &Some("B".into())),
+            Some((0, 0, 0, 1920, 1080))
+        );
     }
 }
