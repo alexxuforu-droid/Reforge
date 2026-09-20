@@ -12,6 +12,7 @@
 export const UNDO_KINDS: readonly string[] = [
   "accent",
   "accessibility",
+  "app_look_applied",
   "animated_wallpaper",
   "animated_wallpaper_stop",
   "archive",
@@ -19,6 +20,8 @@ export const UNDO_KINDS: readonly string[] = [
   "blue_light",
   "browser_policy",
   "cfa",
+  "context_menu_added",
+  "context_menu_removed",
   "cursors",
   "custom_scene_deleted",
   "custom_scene_saved",

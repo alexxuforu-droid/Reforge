@@ -962,6 +962,7 @@ export function ScenePreview({
 export const KIND_CHIP_STYLES: Record<string, string> = {
   accent: "badge-accent",
   accessibility: "badge badge-info",
+  app_look_applied: "badge badge-accent",
   mode: "badge badge-warning",
   transparency: "badge badge-info",
   wallpaper: "badge badge-success",
@@ -998,6 +999,8 @@ export const KIND_CHIP_STYLES: Record<string, string> = {
   definitions_update: "badge badge-success",
   asr_rule: "badge badge-warning",
   cfa: "badge badge-warning",
+  context_menu_added: "badge badge-success",
+  context_menu_removed: "badge badge-neutral",
   rt_disable: "badge badge-danger",
   rt_reenable: "badge badge-success",
   threat_remove: "badge badge-danger",
