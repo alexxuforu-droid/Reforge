@@ -167,7 +167,7 @@
   "power.screenOff": "Apagado de pantalla",
   "power.screenOff.subtitle": "Cuándo duerme la pantalla en tu ausencia",
   "power.onPower": "Con corriente (minutos)",
-  "power.onBattery": "Con batería (minutos)",
+  "power.onBatteryMinutes": "Con batería (minutos)",
   "power.apply": "Aplicar",
   "power.hibernate": "Hibernar",
   "power.hibernate.subtitle": "Guarda la RAM en disco para reanudar rápido",

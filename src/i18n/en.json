@@ -167,7 +167,7 @@
   "power.screenOff": "Screen-off timer",
   "power.screenOff.subtitle": "When the display sleeps while you're away",
   "power.onPower": "On power (minutes)",
-  "power.onBattery": "On battery (minutes)",
+  "power.onBatteryMinutes": "On battery (minutes)",
   "power.apply": "Apply",
   "power.hibernate": "Hibernate",
   "power.hibernate.subtitle": "Save RAM to disk for a fast resume",

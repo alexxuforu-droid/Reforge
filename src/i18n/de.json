@@ -167,7 +167,7 @@
   "power.screenOff": "Bildschirm-Timeout",
   "power.screenOff.subtitle": "Wann der Bildschirm in Abwesenheit schläft",
   "power.onPower": "Am Netz (Minuten)",
-  "power.onBattery": "Akku (Minuten)",
+  "power.onBatteryMinutes": "Akku (Minuten)",
   "power.apply": "Anwenden",
   "power.hibernate": "Ruhezustand",
   "power.hibernate.subtitle": "Speichert RAM auf Disk für schnelles Fortsetzen",

@@ -125,7 +125,7 @@ export default function Power() {
               />
             </label>
             <label className="flex flex-1 flex-col gap-1 text-xs text-[var(--text-secondary)]">
-              {t("power.onBattery")}
+              {t("power.onBatteryMinutes")}
               <input
                 type="number" min={1} max={600}
                 value={dcMin ?? data?.screen_off_dc_min ?? 5}
