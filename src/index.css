@@ -818,7 +818,7 @@ textarea:focus-visible {
     transition: transform 180ms var(--ease-out-expo), border-color 180ms var(--ease-out-expo);
   }
   .widget-dock:hover {
-    transform: translateY(-2px);
+    transform: translateY(-2px) scale(1.015);
   }
   .widget-dock button:active {
     transform: scale(0.97);

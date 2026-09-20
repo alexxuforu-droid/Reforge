@@ -414,7 +414,7 @@ export default function History() {
                         key={e.id}
                         role="listitem"
                         tabIndex={-1}
-                        className={`animate-fade-in flex items-center gap-3 rounded-xl border px-4 py-3 transition-colors ${
+                        className={`animate-rise-in flex items-center gap-3 rounded-xl border px-4 py-3 transition-colors ${
                           selectMode && checked
                             ? "border-[var(--border-accent)] bg-[var(--surface-selected)]"
                             : e.undone

@@ -104,8 +104,21 @@ describe("History keyboard list", () => {
     expect(document.activeElement).toBe(items[0]);
     fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
     expect(document.activeElement).toBe(items[1]);
+    // focus never leaves the list while navigating it
+    expect((list as HTMLElement).contains(document.activeElement)).toBe(true);
     fireEvent.keyDown(document.activeElement!, { key: "Enter" });
     await waitFor(() => expect(callMock).toHaveBeenCalledWith("revert_entry", { id: "e2" }));
+  });
+
+  it("history arrow keys are scoped to the list and never trap global keys", async () => {
+    callMock.mockImplementation(async (cmd: string) => cmd === "get_undo_log" ? entries : zeroDataCall(cmd));
+    render(<History />);
+    const list = await screen.findByRole("list");
+    const before = document.activeElement;
+    // arrows outside the list do nothing global: focus stays where it was
+    fireEvent.keyDown(document.body, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(before);
+    expect((list as HTMLElement).contains(document.activeElement)).toBe(false);
   });
 });
 

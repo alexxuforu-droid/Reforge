@@ -855,7 +855,7 @@ export default function Organize() {
                   </button>
                 </div>
                 {sfOpenId === sf.id && sfHits && (
-                  <div aria-live="polite" className="animate-fade-in ml-6 mt-1 space-y-1 border-l-2 border-[var(--border-accent)] pl-3">
+                  <div aria-live="polite" className="animate-pop-in ml-6 mt-1 space-y-1 border-l-2 border-[var(--border-accent)] pl-3">
                     <div className="text-2xs font-medium text-[var(--text-secondary)]">
                       {t("organize.smartFolder.hitCount", { count: sfHits.length, plural: sfHits.length === 1 ? "" : lang === "de" ? "en" : "s" })}
                     </div>
