@@ -42,9 +42,9 @@ describe("S13.5 i18n catalogs", () => {
 
   it("de values are real translations (only borrowed nouns / brands stay English)", () => {
     const identical = Object.keys(en).filter((k) => de[k as keyof typeof de] === en[k as keyof typeof en]);
-    // Makeover/Marketplace/Widgets/Dashboard/Navigation/Updates/Version (identical
+    // Makeover/Marketplace/Widgets/Dashboard/Navigation/Updates/Version/Name (identical
     // words in German), Tauri (brand) legitimately stay English — nothing else may.
-    expect(identical.sort()).toEqual(["nav.dashboard", "nav.makeover", "nav.marketplace", "nav.widgets", "palette.navigation", "settings.about.native", "settings.about.version", "settings.updates"].sort());
+    expect(identical.sort()).toEqual(["nav.dashboard", "nav.makeover", "nav.marketplace", "nav.widgets", "palette.navigation", "settings.about.native", "settings.about.version", "settings.advanced.registry.name", "settings.updates"].sort());
   });
 
   it("switching to Deutsch in Settings flips labels", { timeout: 120_000 }, async () => {
