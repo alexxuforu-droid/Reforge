@@ -4,6 +4,7 @@ import { fmt } from "../lib/format";
 import { useLoad } from "../lib/useLoad";
 import type { Pack, ThemeState, EngineState, WallpaperState, TranscodeConfig, FontSubstitution, CapabilityMatrix } from "../lib/types";
 import { InlineAlert, Modal, ScenePreview, Section, StatusDot, Toggle, toast } from "../components/ui";
+import { BlurReveal } from "../components/motion/BlurReveal";
 import { StyleStudioRemix } from "../components/StyleStudioRemix";
 import { complement, analogous, triadic, hexToHsl, hslToHex } from "../lib/styleRemix";
 import { encodeStyleCode } from "../lib/shareCodes";
@@ -1144,7 +1145,9 @@ export default function Makeover() {
       <Modal open={quizOpen} title="Style match quiz" onClose={() => setQuizOpen(false)}>
         {quizDone ? (
           <div>
-            <div className="mb-3 text-2xs font-medium uppercase tracking-wider text-[var(--text-tertiary)]">Your top 3 matches</div>
+            <div className="mb-3 text-2xs font-medium uppercase tracking-wider text-[var(--text-tertiary)]">
+              <BlurReveal text="Your top 3 matches" />
+            </div>
             <div className="space-y-2">
               {quizResults.map((s, i) => (
                 <div key={s.id} className={`rounded-xl border p-3 ${i === 0 ? "border-[var(--border-accent)]" : "border-[var(--border-default)]"}`}>
@@ -1186,7 +1189,7 @@ export default function Makeover() {
               <span className="text-2xs font-medium uppercase tracking-wider text-[var(--text-tertiary)]">Question {quizStep + 1} of {QUIZ.length}</span>
               <div className="flex gap-1">{QUIZ.map((_, i) => (<span key={i} className={`h-1 w-3.5 rounded-full transition-colors ${i <= quizStep ? "bg-[var(--accent-hex)]" : "bg-[var(--surface-active)]"}`} />))}</div>
             </div>
-            <p aria-live="polite" className="mb-4 text-base font-medium text-[var(--text-primary)] animate-fade-in">{QUIZ[quizStep].q}</p>
+            <p key={quizStep} aria-live="polite" className="mb-4 text-base font-medium text-[var(--text-primary)] animate-fade-in">{QUIZ[quizStep].q}</p>
             <div className="space-y-2">
               {QUIZ[quizStep].options.map((opt, i) => (
                 <button key={i} onClick={() => pickQuiz(i)} className="flex w-full items-center gap-3 rounded-lg border border-[var(--border-default)] px-4 py-2.5 text-left transition-colors hover:border-[var(--border-accent)] hover:bg-[var(--surface-hover)]">

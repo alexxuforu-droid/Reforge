@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { call, fmt, fmtAge } from "../lib/api";
 import { bucketByDay, bucketByMonth } from "../lib/trends";
 import { riskScore } from "../lib/risk";
 import { useLoad } from "../lib/useLoad";
 import { useI18n } from "../i18n";
+import { useFinePointer, useReducedMotion } from "../components/motion/useMotionPrefs";
 import type { DashboardMetrics, HealthScore, SystemInfo, UndoEntry } from "../lib/types";
 import { InlineAlert, Meter, ScoreRing, Section, StatCard, StatusDot, toast } from "../components/ui";
 import {
@@ -37,6 +38,7 @@ export default function Dashboard({ onNavigate = () => {} }: { onNavigate?: (v: 
     defenderOn: digest ? digest.overall === "healthy" || digest.overall === "attention" : true,
   }), [health, flagged, digest]);
   const [resumeAge, setResumeAge] = useState<number | null>(null);
+  const magnet = useMagneticCta();
 
   useEffect(() => {
     if (hasResumableSession()) setResumeAge(sessionAgeMinutes(loadSession()));
@@ -214,7 +216,7 @@ export default function Dashboard({ onNavigate = () => {} }: { onNavigate?: (v: 
       {/* Quick Actions */}
       <Section title="Quick actions">
         <div className="flex flex-wrap gap-2">
-          <button className="btn-primary btn-sm magnet-label" onClick={() => onNavigate("makeover")}>
+          <button ref={magnet.ref} className="btn-primary btn-sm magnet-label" onClick={() => onNavigate("makeover")} style={magnet.style} {...magnet.handlers}>
             <NavMakeover size={14} /> {resumeAge !== null ? "Resume makeover" : "Makeover"}
           </button>
           {resumeAge !== null && (
@@ -372,4 +374,51 @@ function fmtTime(secs: number): string {
   if (secs >= 3600) return `${(secs / 3600).toFixed(1)} hrs`;
   if (secs >= 60) return `${Math.round(secs / 60)} min`;
   return `${secs}s`;
+}
+
+// Magnetic "Start makeover" nudge (Task 3): the button leans toward the
+// cursor while it is within MAGNET_PX of the button center, clamped to a
+// MAX_PX magnitude so the click target never moves more than 2px. Plain
+// static button on touch pointers and under reduced-motion; the offset also
+// snaps back to rest on leave/press so it never sits displaced.
+const MAGNET_PX = 120;
+const MAX_PX = 2;
+
+function useMagneticCta() {
+  const reduced = useReducedMotion();
+  const fine = useFinePointer();
+  const ref = useRef<HTMLButtonElement>(null);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [pressed, setPressed] = useState(false);
+  const live = !reduced && fine;
+  const onMove = (e: React.MouseEvent) => {
+    if (!live || pressed) return;
+    const rect = ref.current?.getBoundingClientRect();
+    if (!rect) return;
+    const dx = e.clientX - (rect.left + rect.width / 2);
+    const dy = e.clientY - (rect.top + rect.height / 2);
+    const dist = Math.hypot(dx, dy);
+    if (dist > MAGNET_PX || dist === 0) {
+      setOffset((o) => (o.x === 0 && o.y === 0 ? o : { x: 0, y: 0 }));
+      return;
+    }
+    const mag = Math.min(MAX_PX, dist / 60);
+    setOffset({ x: Math.round((dx / dist) * mag * 10) / 10, y: Math.round((dy / dist) * mag * 10) / 10 });
+  };
+  const reset = () => setOffset((o) => (o.x === 0 && o.y === 0 ? o : { x: 0, y: 0 }));
+  return {
+    ref,
+    handlers: live
+      ? {
+          onMouseMove: onMove,
+          onMouseLeave: reset,
+          onPointerDown: () => {
+            setPressed(true);
+            reset();
+          },
+          onPointerUp: () => setPressed(false),
+        }
+      : {},
+    style: offset.x === 0 && offset.y === 0 ? undefined : { transform: `translate(${offset.x}px, ${offset.y}px)` },
+  };
 }

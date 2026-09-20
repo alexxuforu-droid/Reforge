@@ -40,6 +40,15 @@ describe("Premium motion safeguards", () => {
     // the global reduced-motion block zeroes every animation duration
     expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)\s*\{[^}]*animation-duration:\s*0\.01ms/);
   });
+
+  it("scopes signature keyframes to motion-allowed media only", () => {
+    const noPref = css.indexOf("@media (prefers-reduced-motion: no-preference)");
+    expect(noPref).toBeGreaterThan(-1);
+    for (const name of ["stepIn", "riseIn", "popIn", "magnetReset"]) {
+      const at = css.indexOf(`@keyframes ${name}`);
+      expect(at).toBeGreaterThan(noPref);
+    }
+  });
 });
 
 describe("S13.4 contrast snapshot (index.css)", () => {
@@ -182,5 +191,7 @@ describe("S13.1 keyboard navigation", () => {
     expect(tabs).toHaveLength(5);
     const selected = tabs.filter((t) => t.getAttribute("aria-selected") === "true");
     expect(selected).toHaveLength(1);
+    // the current step is exposed to AT as the current step, not just selected
+    expect(selected[0].getAttribute("aria-current")).toBe("step");
   });
 });

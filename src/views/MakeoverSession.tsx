@@ -641,7 +641,7 @@ export default function MakeoverSession() {
               <div className="mb-4 h-1 overflow-hidden rounded-full bg-[var(--gray-4)]">
                 <div className="h-full rounded-full bg-[var(--accent-hex)] transition-all" style={{ width: `${((quizStep + 1) / QUIZ.length) * 100}%` }} />
               </div>
-              <h3 className="mb-3 text-base font-semibold text-[var(--text-primary)]">{QUIZ[quizStep].q}</h3>
+              <h3 key={quizStep} className="animate-fade-in mb-3 text-base font-semibold text-[var(--text-primary)]">{QUIZ[quizStep].q}</h3>
               <div className="grid gap-2 sm:grid-cols-2">
                 {QUIZ[quizStep].options.map((opt, i) => (
                   <button key={i} onClick={() => pickQuiz(i)} className="group rounded-xl border border-[var(--border-default)] bg-[var(--surface-overlay)] px-4 py-3 text-left transition-colors hover:border-[var(--border-accent)] hover:bg-[var(--surface-hover)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent-hex)]">

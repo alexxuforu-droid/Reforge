@@ -721,9 +721,6 @@ textarea:focus-visible {
 .animate-scale-in {
   animation: scaleIn var(--duration-fast) var(--ease-out-expo) both;
 }
-.animate-step-in {
-  animation: stepIn var(--duration-normal) var(--ease-out-expo) both;
-}
 .animate-blur-in {
   animation: blurIn var(--duration-normal) var(--ease-out-expo) both;
 }
@@ -744,13 +741,43 @@ textarea:focus-visible {
   from { opacity: 0; transform: scale(0.98); }
   to { opacity: 1; transform: scale(1); }
 }
-@keyframes stepIn {
-  from { opacity: 0; transform: translateY(3px); }
-  to { opacity: 1; transform: none; }
-}
 @keyframes blurIn {
   from { opacity: 0; filter: blur(6px); }
   to { opacity: 1; filter: blur(0); }
+}
+
+/* ============================================================================
+   Signature motion — Task 3/4 shared tokens. Keyframes live ONLY inside the
+   motion-allowed block so reduced-motion users never parse them into
+   animations; the global reduce block above is the second kill-switch.
+   ============================================================================ */
+@media (prefers-reduced-motion: no-preference) {
+  .animate-step-in {
+    animation: stepIn var(--duration-normal) var(--ease-out-expo) both;
+  }
+  .animate-rise-in {
+    animation: riseIn var(--duration-normal) var(--ease-out-expo) both;
+  }
+  .animate-pop-in {
+    animation: popIn var(--duration-fast) var(--ease-out-expo) both;
+  }
+  @keyframes stepIn {
+    from { opacity: 0; transform: translateY(3px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes riseIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes popIn {
+    from { opacity: 0; transform: scale(0.97); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  /* Magnetic snap-back: returns a nudged CTA to rest without a jump. */
+  @keyframes magnetReset {
+    from { transform: var(--magnet-from, translate(1px, -1px)); }
+    to { transform: none; }
+  }
 }
 
 /* ============================================================================
