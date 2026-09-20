@@ -151,3 +151,12 @@ exe, sha256-verified, NSIS-installed silently) — accepted for now.
 - **shell sweep: clean with two fixes landed.** All PowerShell scripts are fixed constants; Wi-Fi/VPN names pass `validate_profile_name` as single argv elements (VPN gap closed in `network.rs`); threat IDs are validated u64 (`security_center.rs`); elevation path is single-quote-escaped (`capability.rs::ps_single_quote`); pack importer keeps extension + content-sniff + size caps (`marketplace.rs::validate_pack_security`); updater downloads are sha256-verified (`updater.rs::verify_download`).
 - **startup handoff: 2ms measured, 8000ms budget — budget unchanged.** The 2ms figure is deferred-startup from the on-disk log (2026-08-16); a true cold-start number needs a headed machine, so no tightening without that measurement.
 - **Rust gate at audit time:** `cargo fmt --check` clean · `cargo clippy --all-targets -- -D warnings` clean · `cargo test` 144/144 green.
+
+---
+
+## 7. 2026-09-20 security + perf re-verification (X-8/X-9)
+
+- unwrap sweep: clean — every `.unwrap()`/`.expect()` in `src-tauri/src` outside `#[cfg(test)]` modules is one of the three previously justified constants (constant socket-addr parse in `capability.rs:129`, process-entry `.expect()` in `lib.rs:run()`/`run_screensaver_app()`, `about:blank` fallback in `splash.rs:129`); all other hits are test-module code (serde roundtrips, temp-dir fixtures, validator assertions).
+- shell sweep: clean, no new call sites — PowerShell scripts remain fixed constants; Wi-Fi/VPN names flow through `validate_profile_name` (single argv, `network.rs:144,350,372`), threat IDs through `validate_threat_id` (`security_center.rs:577,593,624`), elevation path through `ps_single_quote` (`capability.rs:208`); updater transport is fixed-arg `curl.exe` with sha256 verification (`updater.rs:verify_download`).
+- startup handoff: 2ms (budget 8000ms) — budget unchanged; the on-disk log is stale (2026-08-16, headless machine, no fresh launch possible), so no tightening without a cold-start measurement.
+- pack importer: extension + content-sniff + size caps verified in `marketplace.rs:validate_pack_security`
