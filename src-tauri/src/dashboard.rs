@@ -1,3 +1,4 @@
+use crate::error::AppError;
 use crate::state::AppState;
 use crate::storage::load_json;
 use serde::Serialize;
@@ -14,6 +15,12 @@ pub struct DashboardMetrics {
 
 #[tauri::command]
 pub fn get_dashboard_metrics(state: State<'_, AppState>) -> DashboardMetrics {
+    metrics_inner(&state)
+}
+
+/// v1.1 Task 2 — shared inner so get_dashboard_summary reuses the exact same
+/// personalization/storage math (single source of truth, zero behavior change).
+pub fn metrics_inner(state: &AppState) -> DashboardMetrics {
     let entries = crate::undo::load_undo_entries(&state);
     let mut storage_freed = 0u64;
     let mut files_organized = 0u64;
@@ -107,5 +114,94 @@ pub fn get_dashboard_metrics(state: State<'_, AppState>) -> DashboardMetrics {
         files_organized,
         time_saved_secs,
         active_features: active,
+    }
+}
+
+// ---- IPC hot-path diet (v1.1 Task 2) ----
+//
+// One composite for boot/hot paths: the real health score + personalization +
+// storage in MB + undo count, with none of the heavy lists (active_features
+// strings, full undo log). Field names stay snake_case like every other
+// command; the TS mirror in src/lib/types.ts matches exactly.
+
+#[derive(Serialize)]
+pub struct DashboardSummary {
+    pub health: u32,
+    pub personalization: u32,
+    pub storage_freed_mb: u64,
+    pub undo_total: usize,
+}
+
+#[tauri::command]
+pub fn get_dashboard_summary(state: State<'_, AppState>) -> Result<DashboardSummary, AppError> {
+    Ok(summary_inner(&state))
+}
+
+/// v1.1 Task 2 — pure inner built on `metrics_inner` +
+/// `health_score_inner` + `load_undo_entries()` so the command stays a thin
+/// wrapper and unit tests don't need a Tauri `State`.
+pub fn summary_inner(state: &AppState) -> DashboardSummary {
+    let metrics = metrics_inner(state);
+    let health = crate::system::health_score_inner(state);
+    DashboardSummary {
+        health: health.score as u32,
+        personalization: metrics.personalization_score,
+        storage_freed_mb: metrics.storage_freed / 1_048_576,
+        undo_total: crate::undo::load_undo_entries(state).len(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct TestDir(std::path::PathBuf);
+
+    impl TestDir {
+        fn new() -> Self {
+            use std::sync::atomic::{AtomicU64, Ordering};
+            static SEQ: AtomicU64 = AtomicU64::new(0);
+            let path = std::env::temp_dir().join(format!(
+                "reforge-dashboard-test-{}-{}-{}",
+                std::process::id(),
+                SEQ.fetch_add(1, Ordering::Relaxed),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_nanos())
+                    .unwrap_or(0)
+            ));
+            std::fs::create_dir_all(&path).unwrap();
+            TestDir(path)
+        }
+
+        fn state(&self) -> AppState {
+            AppState {
+                data_dir: self.0.clone(),
+            }
+        }
+    }
+
+    impl Drop for TestDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// v1.1 Task 2 gate: summary composes health + personalization + storage
+    /// (MB, u64) + undo count without the heavy lists.
+    #[test]
+    fn summary_smoke() {
+        let t = TestDir::new();
+        let summary = super::summary_inner(&t.state());
+        assert!(summary.health <= 100);
+        assert!(summary.personalization <= 100);
+        assert_eq!(summary.undo_total, 0);
+        assert_eq!(summary.storage_freed_mb, 0);
+        // serializes with the exact snake_case field names
+        let v = serde_json::to_value(&summary).unwrap();
+        assert!(v.get("health").is_some());
+        assert!(v.get("personalization").is_some());
+        assert!(v.get("storage_freed_mb").is_some());
+        assert!(v.get("undo_total").is_some());
     }
 }

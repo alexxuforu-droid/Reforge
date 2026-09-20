@@ -150,8 +150,10 @@ fn clamp_pts(v: f32, lo: f32, hi: f32, max: u8) -> u8 {
     ((v - lo) / (hi - lo) * max as f32) as u8
 }
 
-#[tauri::command]
-pub fn get_health_score(state: State<'_, AppState>) -> HealthScore {
+/// v1.1 Task 2 — pure inner behind get_health_score so dashboard.rs can
+/// compose the real health score into get_dashboard_summary without
+/// duplicating the scoring (single source of truth, zero behavior change).
+pub fn health_score_inner(state: &AppState) -> HealthScore {
     let mut sys = System::new_all();
     sys.refresh_memory();
     let total = sys.total_memory();
@@ -257,6 +259,11 @@ pub fn get_health_score(state: State<'_, AppState>) -> HealthScore {
             },
         ],
     }
+}
+
+#[tauri::command]
+pub fn get_health_score(state: State<'_, AppState>) -> HealthScore {
+    health_score_inner(&state)
 }
 
 /// P3-7 — local-first diagnostics bundle. One text file with build info +

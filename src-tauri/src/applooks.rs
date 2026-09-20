@@ -20,6 +20,62 @@ fn rules_path(state: &AppState) -> std::path::PathBuf {
     state.data_dir.join("app_looks.json")
 }
 
+/// Task 8 — Look rotator schedule: "apply look Y for app X on cron Z".
+/// Persisted as JSON next to the per-app rules, same load_json/save_json
+/// pattern as `rules_path`.
+#[derive(Serialize, Deserialize, Clone)]
+pub struct LookSchedule {
+    pub app: String,
+    pub look_id: String,
+    pub cron: String,
+}
+
+fn schedules_path(state: &AppState) -> std::path::PathBuf {
+    state.data_dir.join("look_schedules.json")
+}
+
+pub fn schedule_look(state: &AppState, sched: LookSchedule) -> Result<(), AppError> {
+    if sched.app.trim().is_empty() {
+        return Err(AppError::Invalid("App must not be empty.".into()));
+    }
+    if sched.look_id.trim().is_empty() {
+        return Err(AppError::Invalid("Look id must not be empty.".into()));
+    }
+    if sched.cron.trim().is_empty() {
+        return Err(AppError::Invalid("Cron must not be empty.".into()));
+    }
+    if sched.cron.chars().count() > 128 {
+        return Err(AppError::Invalid("Cron must be <= 128 chars.".into()));
+    }
+    for field in [&sched.app, &sched.look_id, &sched.cron] {
+        if field.chars().any(|c| c.is_control()) {
+            return Err(AppError::Invalid(
+                "Schedule fields must not contain control chars.".into(),
+            ));
+        }
+    }
+    let mut schedules: Vec<LookSchedule> = load_json(&schedules_path(state), Vec::new());
+    // Undo trail BEFORE persisting (audit entry; the schedule file itself is
+    // restored from snapshot, so this entry is informational, not revertible).
+    crate::undo::log_entry(
+        state,
+        "look_schedule",
+        format!("Scheduled look {} for {}.", sched.look_id, sched.app),
+        json!({ "app": sched.app, "look_id": sched.look_id, "cron": sched.cron }),
+        false,
+    )?;
+    if let Some(slot) = schedules
+        .iter_mut()
+        .find(|s| s.app.eq_ignore_ascii_case(sched.app.trim()))
+    {
+        *slot = sched;
+    } else {
+        schedules.push(sched);
+    }
+    save_json(&schedules_path(state), &schedules)?;
+    Ok(())
+}
+
 pub fn match_look(running_path: &str, rules: &[AppLookRule]) -> Option<String> {
     let file = running_path
         .rsplit(['\\', '/'])
@@ -138,6 +194,19 @@ pub fn spawn_app_look_watcher(app: tauri::AppHandle, state: AppState) {
 #[cfg(test)]
 mod match_tests {
     use super::*;
+    use crate::state::AppState;
+
+    fn scratch_state() -> AppState {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        static N: AtomicU32 = AtomicU32::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "reforge-sched-{}-{}",
+            std::process::id(),
+            N.fetch_add(1, Ordering::SeqCst)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        AppState { data_dir: dir }
+    }
 
     #[test]
     fn exe_match_is_case_insensitive_filename_only() {
@@ -165,5 +234,47 @@ mod match_tests {
             Some(now - std::time::Duration::from_secs(30)),
             now
         ));
+    }
+
+    #[test]
+    fn schedule_look_rejects_empty() {
+        let state = scratch_state();
+        for sched in [
+            LookSchedule {
+                app: "".into(),
+                look_id: "night".into(),
+                cron: "0 9 * * *".into(),
+            },
+            LookSchedule {
+                app: "game.exe".into(),
+                look_id: "".into(),
+                cron: "0 9 * * *".into(),
+            },
+            LookSchedule {
+                app: "game.exe".into(),
+                look_id: "night".into(),
+                cron: "".into(),
+            },
+        ] {
+            assert!(matches!(
+                schedule_look(&state, sched),
+                Err(AppError::Invalid(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn schedule_look_rejects_control_chars() {
+        let state = scratch_state();
+        let sched = LookSchedule {
+            app: "game.exe".into(),
+            look_id: "night".into(),
+            cron: "0\t9 * * *".into(),
+        };
+        assert!(matches!(
+            schedule_look(&state, sched),
+            Err(AppError::Invalid(_))
+        ));
+        assert!(!schedules_path(&state).exists());
     }
 }

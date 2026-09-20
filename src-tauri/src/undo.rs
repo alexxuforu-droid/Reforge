@@ -238,6 +238,89 @@ pub fn get_undo_log(state: State<'_, AppState>) -> Vec<UndoEntry> {
     load_undo_entries(&state)
 }
 
+// ---- IPC hot-path diet (v1.1 Task 2) ----
+//
+// The full log ships every entry's `data` payload (before/after snapshots,
+// moved-file lists — ~336 KB at 200 entries). Hot paths (Dashboard recency,
+// QuickHistory) only need identity + description, so they use this digest
+// (~0.6 KB, 400x+ smaller). History.tsx stays on get_undo_log — it is the
+// only consumer that reads `data` (revert + storage_clean report cards).
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct UndoDigestEntry {
+    pub id: String,
+    pub ts: u64,
+    pub kind: String,
+    pub description: String,
+    pub revertible: bool,
+    pub undone: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct UndoDigest {
+    pub total: usize,
+    pub by_kind: std::collections::HashMap<String, u32>,
+    pub by_day: std::collections::HashMap<String, u32>,
+    /// Newest-first, capped at 5.
+    pub recent: Vec<UndoDigestEntry>,
+}
+
+/// UTC day key (YYYY-MM-DD) for a millis-since-epoch timestamp, dependency-
+/// free via Howard Hinnant's civil_from_days. UTC, not local: the digest is
+/// coarse counts for charts, and a portable pure function keeps this unit-
+/// testable on any target (no chrono, no Win32 dependency).
+fn day_key(ts_ms: u64) -> String {
+    let days = (ts_ms / 86_400_000) as i64;
+    let z = days + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = (z - era * 146_097) as u64; // [0, 146096]
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365; // [0, 399]
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100); // [0, 365]
+    let mp = (5 * doy + 2) / 153; // [0, 11]
+    let d = doy - (153 * mp + 2) / 5 + 1; // [1, 31]
+    let m = if mp < 10 { mp + 3 } else { mp - 9 }; // [1, 12]
+    let y = if m <= 2 { y + 1 } else { y };
+    format!("{y:04}-{m:02}-{d:02}")
+}
+
+pub fn undo_digest_inner(state: &AppState) -> UndoDigest {
+    let entries = load_undo_entries(state);
+    let total = entries.len();
+    let mut by_kind: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
+    let mut by_day: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
+    for e in &entries {
+        *by_kind.entry(e.kind.clone()).or_insert(0) += 1;
+        *by_day.entry(day_key(e.ts)).or_insert(0) += 1;
+    }
+    let recent = entries
+        .into_iter()
+        .take(5)
+        .map(|e| UndoDigestEntry {
+            id: e.id,
+            ts: e.ts,
+            kind: e.kind,
+            description: e.description,
+            revertible: e.revertible,
+            undone: e.undone,
+        })
+        .collect();
+    UndoDigest {
+        total,
+        by_kind,
+        by_day,
+        recent,
+    }
+}
+
+/// v1.1 Task 2 hot-path command. Takes `State` (Tauri requirement) and returns
+/// `Result` per the typed-error constraint; the pure work lives in
+/// `undo_digest_inner` built on `load_undo_entries()`.
+#[tauri::command]
+pub fn get_undo_digest(state: State<'_, AppState>) -> Result<UndoDigest, AppError> {
+    Ok(undo_digest_inner(&state))
+}
+
 #[tauri::command]
 pub async fn revert_entry(
     app: tauri::AppHandle,
@@ -1196,6 +1279,123 @@ mod tests {
                 back[i].data, *d,
                 "payload for kind {k} must survive round-trip"
             );
+        }
+    }
+
+    /// v1.1 Task 2 — the digest carries counts + top-5 identity rows and never
+    /// the `data` payloads, so hot paths stop shipping the full 336 KB log.
+    #[test]
+    fn digest_counts_kinds_days_caps_recent_and_omits_data() {
+        // Anchors: epoch boundaries are exact UTC days.
+        assert_eq!(super::day_key(0), "1970-01-01");
+        assert_eq!(super::day_key(86_400_000), "1970-01-02");
+        // 2026-09-20T00:00:00Z = 1789862400000 ms (node Date.UTC(2026,8,20)).
+        assert_eq!(super::day_key(1_789_862_400_000), "2026-09-20");
+
+        let t = TestDir::new();
+        // 7 entries, fat data payloads: 4x accent on 2026-09-20, 3x mode split
+        // across 2026-09-20 (1) and 2026-09-19 (2).
+        let day20 = 1_789_862_400_000u64;
+        let day19 = day20 - 86_400_000;
+        let big =
+            serde_json::json!({ "before": "x".repeat(4096), "moves": (0..50).collect::<Vec<_>>() });
+        let mut entries = Vec::new();
+        for i in 0..4 {
+            entries.push(UndoEntry {
+                id: format!("a-{i}"),
+                ts: day20 + i * 1000,
+                kind: "accent".into(),
+                description: format!("accent {i}"),
+                revertible: true,
+                undone: false,
+                data: big.clone(),
+            });
+        }
+        entries.push(UndoEntry {
+            id: "m-0".into(),
+            ts: day20 + 9999,
+            kind: "mode".into(),
+            description: "mode new".into(),
+            revertible: true,
+            undone: false,
+            data: big.clone(),
+        });
+        for i in 0..2 {
+            entries.push(UndoEntry {
+                id: format!("m-old-{i}"),
+                ts: day19 + i * 1000,
+                kind: "mode".into(),
+                description: format!("mode old {i}"),
+                revertible: false,
+                undone: false,
+                data: big.clone(),
+            });
+        }
+        save_undo(&t.state(), &entries).unwrap();
+
+        let d = super::undo_digest_inner(&t.state());
+        assert_eq!(d.total, 7);
+        assert_eq!(d.by_kind.get("accent"), Some(&4));
+        assert_eq!(d.by_kind.get("mode"), Some(&3));
+        assert_eq!(d.by_day.get("2026-09-20"), Some(&5));
+        assert_eq!(d.by_day.get("2026-09-19"), Some(&2));
+        // day keys are YYYY-MM-DD shaped and sum to the total
+        for k in d.by_day.keys() {
+            assert_eq!(k.len(), 10, "day key {k} must be YYYY-MM-DD");
+            assert_eq!(&k[4..5], "-");
+            assert_eq!(&k[7..8], "-");
+        }
+        assert_eq!(d.by_day.values().sum::<u32>(), 7);
+        // recent is newest-first, capped at 5, with no data payload
+        assert_eq!(d.recent.len(), 5);
+        assert_eq!(d.recent[0].id, "m-0");
+        assert!(d.recent.iter().all(|r| !r.description.is_empty()));
+        let ser = serde_json::to_value(&d).unwrap();
+        assert!(ser.get("data").is_none());
+        for r in ser.get("recent").and_then(|v| v.as_array()).unwrap() {
+            assert!(r.get("data").is_none(), "recent row must not carry data");
+        }
+        // the diet pays: digest bytes << full-log bytes with fat payloads
+        let digest_bytes = serde_json::to_string(&d).unwrap().len();
+        let full_bytes = serde_json::to_string(&entries).unwrap().len();
+        assert!(
+            digest_bytes * 10 < full_bytes,
+            "digest {digest_bytes}B should be <10% of full {full_bytes}B"
+        );
+    }
+
+    /// v1.1 Task 2 gate: 200-entry cap respected, no `data` field serialized.
+    #[test]
+    fn digest_counts_no_data() {
+        let t = TestDir::new();
+        for i in 0..250 {
+            log_entry(
+                &t.state(),
+                if i % 2 == 0 { "accent" } else { "mode" },
+                format!("entry {}", i),
+                serde_json::json!({ "before": "x".repeat(2048), "n": i }),
+                true,
+            )
+            .unwrap();
+        }
+        let d = super::undo_digest_inner(&t.state());
+        // 200-entry cap respected
+        assert_eq!(d.total, 200);
+        assert_eq!(d.by_kind.values().sum::<u32>(), 200);
+        assert_eq!(d.by_day.values().sum::<u32>(), 200);
+        // recent is top-5 newest-first
+        assert_eq!(d.recent.len(), 5);
+        assert_eq!(d.recent[0].description, "entry 249");
+        // NO data field anywhere in the serialized digest
+        let ser_str = serde_json::to_string(&d).unwrap();
+        assert!(
+            !ser_str.contains("\"data\""),
+            "digest must not serialize a data field"
+        );
+        let ser = serde_json::to_value(&d).unwrap();
+        assert!(ser.get("data").is_none());
+        for r in ser.get("recent").and_then(|v| v.as_array()).unwrap() {
+            assert!(r.get("data").is_none(), "recent row must not carry data");
         }
     }
 }

@@ -3,9 +3,10 @@ use crate::state::AppState;
 use crate::storage::{load_json, now_millis, save_json};
 use crate::{cleanup, organize};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use tauri::State;
 
-use crate::error::AppError;
+use crate::error::{io_err, AppError};
 #[derive(Serialize, Deserialize, Clone)]
 pub struct MaintenanceReport {
     pub ts: u64,
@@ -200,4 +201,108 @@ pub fn archive_report(state: State<'_, AppState>, ts: u64) -> Result<String, App
 #[allow(dead_code)]
 fn _unused(state: &AppState) {
     let _ = load_json::<Vec<u8>>(&state.data_dir.join("_"), Vec::new());
+}
+
+/// Task 8 — Maintenance autopilot: dry-run sweep that returns a before/after
+/// report. Safety model: every mutation logs an undo entry BEFORE the change.
+/// The sweep itself is dry-run (nothing deleted); the mutations here are the
+/// persisted maintenance report (inside `run_maintenance_inner`) and the
+/// autopilot report file — both preceded by an undo entry.
+#[derive(Serialize, Deserialize, Clone)]
+pub struct AutopilotReport {
+    pub cleaned_mb: u64,
+    pub dupes_removed: u64,
+    pub report_id: String,
+}
+
+pub fn run_autopilot(state: &AppState) -> Result<AutopilotReport, AppError> {
+    // Snapshot storage radar BEFORE.
+    let before = crate::storage::scan_storage_radar();
+    let before_used: u64 = before.iter().map(|d| d.used).sum();
+
+    // Undo entry BEFORE the maintenance sweep (which persists a report file).
+    crate::undo::log_entry(
+        state,
+        "autopilot_started",
+        "Maintenance autopilot started (before snapshot taken).".to_string(),
+        json!({ "before_used_bytes": before_used }),
+        false,
+    )?;
+
+    let maintenance = run_maintenance_inner(state)?;
+
+    // Snapshot storage radar AFTER.
+    let after = crate::storage::scan_storage_radar();
+    let after_used: u64 = after.iter().map(|d| d.used).sum();
+
+    let freed_bytes = before_used.saturating_sub(after_used);
+    let swept_bytes = maintenance
+        .junk_bytes
+        .saturating_add(maintenance.duplicate_bytes);
+    let cleaned_mb = swept_bytes
+        .saturating_add(freed_bytes)
+        .saturating_div(1024 * 1024);
+    let dupes_removed = maintenance.duplicate_files as u64;
+    let report_id = uuid::Uuid::new_v4().to_string();
+
+    let report = AutopilotReport {
+        cleaned_mb,
+        dupes_removed,
+        report_id: report_id.clone(),
+    };
+
+    // Undo entry BEFORE persisting the autopilot report file.
+    crate::undo::log_entry(
+        state,
+        "autopilot_report",
+        format!(
+            "Autopilot report {}: {} MB swept, {} duplicate groups.",
+            report_id, cleaned_mb, dupes_removed
+        ),
+        json!({
+            "report_id": report_id,
+            "cleaned_mb": cleaned_mb,
+            "dupes_removed": dupes_removed,
+            "before_used_bytes": before_used,
+            "after_used_bytes": after_used,
+        }),
+        false,
+    )?;
+
+    let report_path = reports_dir(state).join(format!("autopilot-{}.json", report_id));
+    std::fs::create_dir_all(reports_dir(state))
+        .map_err(|e| io_err(reports_dir(state).display().to_string(), e))?;
+    save_json(&report_path, &report)?;
+
+    Ok(report)
+}
+
+#[cfg(test)]
+mod autopilot_tests {
+    use super::*;
+
+    fn scratch_state() -> AppState {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        static N: AtomicU32 = AtomicU32::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "reforge-autopilot-{}-{}",
+            std::process::id(),
+            N.fetch_add(1, Ordering::SeqCst)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        AppState { data_dir: dir }
+    }
+
+    #[test]
+    fn autopilot_report_shape() {
+        let state = scratch_state();
+        let report = run_autopilot(&state).expect("autopilot should succeed");
+        assert!(!report.report_id.is_empty());
+        assert!(report.cleaned_mb < u64::MAX);
+        assert!(report.dupes_removed < u64::MAX);
+        // The report file must have been persisted.
+        assert!(reports_dir(&state)
+            .join(format!("autopilot-{}.json", report.report_id))
+            .exists());
+    }
 }

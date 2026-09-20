@@ -588,6 +588,7 @@ pub fn run() {
             updater::apply_staged_update,
             // dashboard
             dashboard::get_dashboard_metrics,
+            dashboard::get_dashboard_summary,
             // maintenance
             maintenance::run_maintenance,
             maintenance::list_reports,
@@ -694,6 +695,7 @@ pub fn run() {
             fun::fun_hotkey_state,
             // misc
             undo::get_undo_log,
+            undo::get_undo_digest,
             undo::revert_entry,
             undo::snapshot_now,
             undo::list_snapshots,
