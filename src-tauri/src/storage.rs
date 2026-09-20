@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tauri::{Emitter, State};
 
-use crate::error::AppError;
+use crate::error::{io_err, AppError};
 
 /// Retry a transient IO operation. Defender real-time scanning or the indexer
 /// briefly holds a just-written file (ERROR_SHARING_VIOLATION for readers AND
@@ -32,19 +32,14 @@ pub fn load_json<T: DeserializeOwned>(path: &Path, default: T) -> T {
     }
 }
 
-fn io_err(path: &Path, e: std::io::Error) -> AppError {
-    AppError::Io {
-        path: path.display().to_string(),
-        source: e,
-    }
-}
-
 pub fn save_json<T: Serialize>(path: &Path, value: &T) -> Result<(), AppError> {
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| io_err(path, e))?;
+        std::fs::create_dir_all(parent).map_err(|e| io_err(path.display().to_string(), e))?;
     }
-    let s = serde_json::to_string_pretty(value).map_err(|e| AppError::Command(e.to_string()))?;
-    retry_io(|| std::fs::write(path, s.clone())).map_err(|e| io_err(path, e))
+    let s = serde_json::to_string_pretty(value).map_err(|e| AppError::Invalid(e.to_string()))?;
+    let tmp = path.with_extension("tmp");
+    retry_io(|| std::fs::write(&tmp, &s)).map_err(|e| io_err(tmp.display().to_string(), e))?;
+    std::fs::rename(&tmp, path).map_err(|e| io_err(path.display().to_string(), e))
 }
 
 pub fn now_millis() -> u64 {

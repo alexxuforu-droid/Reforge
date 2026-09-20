@@ -57,8 +57,8 @@ fn version_band(build: u32) -> String {
         return "win10".into();
     }
     let bands: &[(u32, &str)] = &[
+        (26200, "win11_25h2"),
         (26100, "win11_24h2"),
-        (25999, "win11_25h2"), // 25H2 preview band sits above 26100
         (22631, "win11_23h2"),
         (22621, "win11_22h2"),
         (22000, "win11_21h2"),
@@ -228,7 +228,9 @@ mod tests {
     fn band_classification() {
         assert!(version_band(19045).starts_with("win10"));
         assert!(version_band(22631).starts_with("win11"));
-        assert!(version_band(26100).starts_with("win11"));
+        assert_eq!(version_band(26100), "win11_24h2");
+        assert_eq!(version_band(26200), "win11_25h2");
+        assert_eq!(version_band(25999), "win11_23h2");
         assert!(version_band(0) == "unknown");
     }
 

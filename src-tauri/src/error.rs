@@ -55,3 +55,19 @@ impl From<std::io::Error> for AppError {
         }
     }
 }
+
+/// Typed constructors for new code: prefer these over `AppError::Command(e.to_string())`
+/// so the frontend can branch on `{ kind }` instead of string-matching messages.
+pub fn io_err(path: impl Into<String>, e: std::io::Error) -> AppError {
+    AppError::Io {
+        path: path.into(),
+        source: e,
+    }
+}
+
+pub fn registry_err(key: impl Into<String>, e: std::io::Error) -> AppError {
+    AppError::Registry {
+        key: key.into(),
+        source: e,
+    }
+}
