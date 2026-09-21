@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { errorCopy, call, fmtAge } from "../lib/api";
 import { useLoad } from "../lib/useLoad";
 import type { AppEntry, ClipItem, FocusSession, MacroRule } from "../lib/types";
-import { InlineAlert, Modal, Section, Toggle, toast } from "../components/ui";
+import { InlineAlert, Modal, Section, Select, SettingRow, Toggle, toast } from "../components/ui";
 import { IconSearch, IconCopy, IconPin, IconPlus, IconTrash, IconPower, IconTimer } from "../components/icons";
 
 export default function Productivity() {
@@ -13,6 +13,17 @@ export default function Productivity() {
   const [mApp, setMApp] = useState("");
   const [mLook, setMLook] = useState("Midnight Rain");
   const [copyMsg, setCopyMsg] = useState("");
+
+  // v1.1 Task 8 — look rotator: "apply look Y for app X on cron Z".
+  // The app list is the quick-launcher list loaded above; errors surface
+  // as an InlineAlert via errorCopy() (branches on kind, never on text).
+  const ROTATOR_LOOKS = ["Midnight Rain", "Retro Wave", "Forest Calm"];
+  const [rotApp, setRotApp] = useState("");
+  const [rotLook, setRotLook] = useState(ROTATOR_LOOKS[0]);
+  const [rotCron, setRotCron] = useState("0 9 * * *");
+  const [rotBusy, setRotBusy] = useState(false);
+  const [rotError, setRotError] = useState<string | null>(null);
+  const [rotOk, setRotOk] = useState("");
 
   // S2.2 — every section's load goes through useLoad: real error surface,
   // one toast per command per session on first failure.
@@ -108,6 +119,20 @@ export default function Productivity() {
     call("remove_macro", { id: m.id })
       .then(() => refreshMacros())
       .catch((e) => toast(errorCopy(e), "err"));
+  };
+
+  const saveRotator = async () => {
+    setRotBusy(true);
+    setRotError(null);
+    setRotOk("");
+    try {
+      await call("schedule_look", { sched: { app: rotApp, look_id: rotLook, cron: rotCron } });
+      setRotOk(`Scheduled ${rotLook} for ${rotApp || "—"} (${rotCron}). Undoable from History.`);
+    } catch (e) {
+      setRotError(errorCopy(e));
+    } finally {
+      setRotBusy(false);
+    }
   };
 
   const toggleFocus = (on: boolean) => {
@@ -312,6 +337,60 @@ export default function Productivity() {
             ))}
           </div>
         )}
+      </Section>
+
+      {/* v1.1 Task 8 — look rotator: scheduled per-app looks */}
+      <Section
+        title="Look rotator"
+        subtitle="Apply a look for an app on a schedule. Every save is logged in History."
+      >
+        {rotError && <InlineAlert>{rotError}</InlineAlert>}
+        {rotOk && <InlineAlert kind="success">{rotOk}</InlineAlert>}
+        <SettingRow
+          title="App"
+          description="Pick from your installed apps (quick-launcher list)"
+          control={
+            <Select
+              value={rotApp}
+              onChange={setRotApp}
+              ariaLabel="App for look rotator"
+              options={[
+                { value: "", label: "Choose an app…" },
+                ...(apps ?? []).map((a) => ({ value: a.name, label: a.name })),
+              ]}
+            />
+          }
+        />
+        <SettingRow
+          title="Look"
+          description="The look to apply on schedule"
+          control={
+            <Select
+              value={rotLook}
+              onChange={setRotLook}
+              ariaLabel="Look for rotator schedule"
+              options={ROTATOR_LOOKS.map((l) => ({ value: l, label: l }))}
+            />
+          }
+        />
+        <SettingRow
+          title="Schedule"
+          description="Cron — e.g. 0 9 * * * runs daily at 9am"
+          control={
+            <input
+              className="input !w-44"
+              value={rotCron}
+              onChange={(e) => setRotCron(e.target.value)}
+              placeholder="0 9 * * *"
+              aria-label="Cron schedule"
+            />
+          }
+        />
+        <div className="mt-3 flex justify-end">
+          <button className="btn-primary text-xs" onClick={saveRotator} disabled={rotBusy}>
+            {rotBusy ? "Saving…" : "Save schedule"}
+          </button>
+        </div>
       </Section>
 
       <Modal open={macroOpen} title="New automation macro" onClose={() => setMacroOpen(false)} onConfirm={createMacro} confirmLabel="Create macro">

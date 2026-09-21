@@ -5,8 +5,9 @@
 // achievements panel. Monochrome-first chrome everywhere; individual widget
 // PAYOFFS carry their own color (§2).
 import { useEffect, useReducer, useState } from "react";
-import { errorCopy } from "../../lib/api";
-import { InlineAlert, Section, Toggle, toast } from "../../components/ui";
+import { call, errorCopy } from "../../lib/api";
+import type { WidgetShare } from "../../lib/types";
+import { InlineAlert, Modal, Section, Toggle, toast } from "../../components/ui";
 import { MagneticButton } from "../../components/motion/MagneticButton";
 import { IconChevronDown, IconChevronUp, IconCpu, IconStar } from "../../components/icons";
 import { ACHIEVEMENTS } from "./achievements";
@@ -140,9 +141,144 @@ function FieldEditor({
   );
 }
 
+function ShareModal({ w, onClose }: { w: WidgetDef; onClose: () => void }) {
+  const [share, setShare] = useState<WidgetShare | null>(null);
+  const [loadErr, setLoadErr] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [importText, setImportText] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    void call<WidgetShare>("export_widget_share", { widget_id: w.id })
+      .then((s) => {
+        if (!cancelled) {
+          setShare(s);
+          setLoadErr(null);
+        }
+      })
+      .catch((e) => {
+        if (!cancelled) setLoadErr(errorCopy(e));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [w]);
+
+  const copyShare = async () => {
+    if (!share) return;
+    const text = JSON.stringify(share);
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // clipboard API unavailable (permissions/iframe) — legacy fallback
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      ta.remove();
+    }
+    setCopied(true);
+    toast("Share copied — paste it anywhere.", "ok");
+  };
+
+  const doImport = async () => {
+    if (importing) return;
+    setImporting(true);
+    try {
+      const parsed = JSON.parse(importText) as WidgetShare;
+      await call("import_widget_share", { share: parsed });
+      await refresh();
+      toast("Shared widget imported.", "ok");
+      onClose();
+    } catch (e) {
+      toast(
+        e instanceof SyntaxError
+          ? "That isn't valid share JSON — check it and try again."
+          : errorCopy(e),
+        "err",
+      );
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  return (
+    <Modal open title={`Share ${w.name}`} onClose={onClose} confirmLabel="Done">
+      {loading ? (
+        <div className="skeleton h-8 w-full" />
+      ) : loadErr ? (
+        <InlineAlert kind="error">
+          <span className="text-xs">{loadErr}</span>
+        </InlineAlert>
+      ) : (
+        share && (
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-[var(--text-primary)]">Share ID</label>
+            <div className="flex items-center gap-2">
+              <code
+                data-testid={`widget-share-id-${w.id}`}
+                className="min-w-0 flex-1 truncate rounded-md border border-[var(--border-default)] bg-[var(--surface-base)] px-3 py-2 font-mono text-xs text-[var(--text-primary)]"
+                title={share.share_id}
+              >
+                {share.share_id}
+              </code>
+              <button
+                type="button"
+                data-testid={`widget-share-copy-${w.id}`}
+                className="btn btn-ghost shrink-0"
+                onClick={() => void copyShare()}
+              >
+                {copied ? "Copied" : "Copy"}
+              </button>
+            </div>
+            <p className="text-[11px] leading-relaxed text-[var(--text-tertiary)]">
+              Copy pastes the full share JSON (id + config) to your clipboard.
+            </p>
+          </div>
+        )
+      )}
+      <div className="mt-4 space-y-2">
+        <label
+          htmlFor={`widget-share-import-${w.id}`}
+          className="text-xs font-medium text-[var(--text-primary)]"
+        >
+          Import a shared widget
+        </label>
+        <textarea
+          id={`widget-share-import-${w.id}`}
+          data-testid={`widget-share-import-${w.id}`}
+          className="min-h-20 w-full rounded-md border border-[var(--border-default)] bg-[var(--surface-base)] px-3 py-2 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent-hex)]"
+          placeholder='Paste share JSON, e.g. {"share_id":"…","widget_id":"…","config":{}}'
+          value={importText}
+          onChange={(e) => setImportText(e.target.value)}
+        />
+        <div className="flex justify-end">
+          <button
+            type="button"
+            data-testid={`widget-share-import-btn-${w.id}`}
+            className="btn btn-primary"
+            disabled={importing || importText.trim().length === 0}
+            onClick={() => void doImport()}
+          >
+            {importing ? "Importing…" : "Import"}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function WidgetCard({ w }: { w: WidgetDef }) {
   const [expanded, setExpanded] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const on = isEnabled(w.id);
   const cfg = getState().configs[w.id] ?? {};
 
@@ -224,6 +360,17 @@ function WidgetCard({ w }: { w: WidgetDef }) {
           )}
         </div>
       )}
+      <div className="mt-3 flex justify-end border-t border-[var(--border-subtle)] pt-2">
+        <button
+          type="button"
+          data-testid={`widget-share-${w.id}`}
+          className="text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+          onClick={() => setShareOpen(true)}
+        >
+          Share
+        </button>
+      </div>
+      {shareOpen && <ShareModal w={w} onClose={() => setShareOpen(false)} />}
     </div>
   );
 }

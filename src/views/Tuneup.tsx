@@ -2,11 +2,11 @@ import { useEffect, useState } from "react";
 import { errorCopy, call, callWithTimeout, fmt, fmtDate, swallow } from "../lib/api";
 import { useLoad } from "../lib/useLoad";
 import type {
-  AssociationInfo, BloatApp, BootStats, CleanResult, DriverInfo, ExtensionInfo,
+  AssociationInfo, AutopilotReport, BloatApp, BootStats, CleanResult, DriverInfo, ExtensionInfo,
   JunkItem, JunkScan, MaintenanceReport, MemHog, OrphanEntry, PowerPlan,
   StartupEntry, TaskInfo,
 } from "../lib/types";
-import { InlineAlert, Modal, Section, toast } from "../components/ui";
+import { EmptyState, InlineAlert, Modal, Section, StatCard, toast } from "../components/ui";
 import { onAction } from "../lib/events";
 import { IconTrash } from "../components/icons";
 
@@ -22,6 +22,13 @@ export default function Tuneup() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [startup, setStartup] = useState<StartupEntry[]>([]);
   const [runningMaint, setRunningMaint] = useState(false);
+
+  // v1.1 Task 8 — maintenance autopilot: one-click dry-run sweep with a
+  // before/after report. Uses callWithTimeout so a hung backend can never
+  // leave the button stuck on "Running…" (same pattern as runMaintenance).
+  const [autopilot, setAutopilot] = useState<AutopilotReport | null>(null);
+  const [autopilotBusy, setAutopilotBusy] = useState(false);
+  const [autopilotError, setAutopilotError] = useState<string | null>(null);
 
   // ---- power tools ----
   // _hogs/_orphans/_assocs are loaded for upcoming power tools but not yet
@@ -66,6 +73,25 @@ export default function Tuneup() {
     } finally {
       setRunningMaint(false);
     }
+  };
+
+  const runAutopilot = async () => {
+    setAutopilotBusy(true);
+    setAutopilotError(null);
+    try {
+      const r = await callWithTimeout<AutopilotReport>("run_autopilot", undefined, 180_000);
+      setAutopilot(r);
+      refreshReports();
+      toast(`Autopilot complete — ${r.cleaned_mb} MB swept, ${r.dupes_removed} duplicate groups`);
+    } catch (e) {
+      setAutopilotError(errorCopy(e));
+    } finally {
+      setAutopilotBusy(false);
+    }
+  };
+
+  const goHistory = () => {
+    window.dispatchEvent(new CustomEvent("reforge:widget-nav", { detail: { view: "history" } }));
   };
 
   const runScan = async () => {
@@ -284,6 +310,44 @@ export default function Tuneup() {
             </button>
           }
         >
+          {/* v1.1 Task 8 — maintenance autopilot: dry-run sweep + report */}
+          <Section
+            title="Maintenance autopilot"
+            subtitle="One click: sweeps junk + duplicates and returns a before/after report. Dry-run — nothing is deleted, clean from the Junk tab."
+            actions={
+              <button className="btn-primary" onClick={runAutopilot} disabled={autopilotBusy}>
+                {autopilotBusy ? "Running…" : "Run autopilot"}
+              </button>
+            }
+          >
+            {autopilotError && <InlineAlert>{autopilotError}</InlineAlert>}
+            {!autopilot && !autopilotError && (
+              <EmptyState
+                title="No autopilot run yet"
+                description="Run it to see how much junk + duplicates a weekly tidy would sweep."
+              />
+            )}
+            {autopilot && (
+              <>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <StatCard
+                    label="Space swept"
+                    value={`${autopilot.cleaned_mb} MB`}
+                    sub="junk + duplicate waste (dry-run)"
+                  />
+                  <StatCard
+                    label="Duplicate groups"
+                    value={String(autopilot.dupes_removed)}
+                    sub={`report ${autopilot.report_id.slice(0, 8)}…`}
+                  />
+                </div>
+                <button className="btn-ghost btn-sm mt-3" onClick={goHistory}>
+                  View report in History →
+                </button>
+              </>
+            )}
+          </Section>
+
           <div className="grid gap-6 lg:grid-cols-2">
             {/* Boot Stats */}
             {bootError && <InlineAlert>{bootError}</InlineAlert>}

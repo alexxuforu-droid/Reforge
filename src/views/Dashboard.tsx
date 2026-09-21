@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { call, fmt, fmtAge } from "../lib/api";
-import { riskScore } from "../lib/risk";
+import { riskScore, riskTrend } from "../lib/risk";
 import { useLoad } from "../lib/useLoad";
 import { useI18n } from "../i18n";
 import { useFinePointer, useReducedMotion } from "../components/motion/useMotionPrefs";
 import type { DashboardMetrics, HealthScore, SystemInfo, UndoDigest } from "../lib/types";
-import { InlineAlert, Meter, ScoreRing, Section, StatCard, StatusDot, toast } from "../components/ui";
+import { InlineAlert, EmptyState, Meter, ScoreRing, Section, StatCard, StatusDot, toast } from "../components/ui";
+import { Sparkline } from "../components/charts";
 import {
   NavMakeover, IconCpu, IconHardDrive, IconClock, IconShieldCheck,
 } from "../components/icons";
@@ -58,6 +59,17 @@ export default function Dashboard({ onNavigate = () => {} }: { onNavigate?: (v: 
   const trendPeak = Math.max(1, ...trendBuckets.map((b) => b.count));
   const monthBuckets = useMemo(() => lastMonthsFromByDay(recent?.by_day ?? {}, 6), [recent]);
   const monthPeak = Math.max(1, ...monthBuckets.map((b) => b.count));
+  // Risk v2 trend — daily 0-100 scores from the digest's by_day counts via
+  // riskTrend() (same scale as the risk card above). Empty until the first
+  // logged change.
+  const riskTrendPoints = useMemo(() => (recent ? riskTrend(recent, 14) : []), [recent]);
+  const riskTrendLast = riskTrendPoints.length > 0 ? riskTrendPoints[riskTrendPoints.length - 1].score : null;
+  const riskTrendColor =
+    riskTrendLast === null || riskTrendLast >= 75
+      ? "var(--status-success)"
+      : riskTrendLast >= 40
+        ? "var(--status-warning)"
+        : "var(--status-danger)";
   const latestChange = recent?.recent[0] ?? null;
 
   const disk = sys?.disks.length ? [...sys.disks].sort((a, b) => a.free_pct - b.free_pct)[0] : null;
@@ -316,6 +328,37 @@ export default function Dashboard({ onNavigate = () => {} }: { onNavigate?: (v: 
                   />
                 ))}
               </div>
+            </div>
+          </div>
+        )}
+      </Section>
+
+      {/* Risk trend (Risk v2) — daily 0-100 score from the undo digest */}
+      <Section title="Risk trend" subtitle="Daily score from your local change history — higher is calmer">
+        {riskTrendPoints.length === 0 ? (
+          <EmptyState
+            title="No risk history yet"
+            description="Make a change and your daily risk trend will appear here."
+          />
+        ) : (
+          <div>
+            <div className="mb-1 flex items-baseline justify-between text-2xs text-[var(--text-tertiary)]">
+              <span>
+                {riskTrendPoints[0].day} → {riskTrendPoints[riskTrendPoints.length - 1].day}
+              </span>
+              <span className="text-sm font-medium text-[var(--text-primary)]">
+                {riskTrendLast}
+              </span>
+            </div>
+            <div
+              role="img"
+              aria-label={`Daily risk score for ${riskTrendPoints.length} days, latest ${riskTrendLast} out of 100`}
+            >
+              <Sparkline
+                data={riskTrendPoints.map((p) => p.score)}
+                color={riskTrendColor}
+                maxOverride={100}
+              />
             </div>
           </div>
         )}

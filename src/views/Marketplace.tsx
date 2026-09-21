@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
+import { useI18n } from "../i18n";
 import { errorCopy, call } from "../lib/api";
-import type { BundleInfo, BundleManifest } from "../lib/types";
-import { Modal, Section, toast } from "../components/ui";
+import type { BundleInfo, BundleManifest, PackDiff } from "../lib/types";
+import { InlineAlert, KindChip, Modal, Section, toast } from "../components/ui";
 import { TiltCard } from "../components/motion/TiltCard";
 import {
   IconRefresh, IconDownload, IconUpload, IconCheck, IconTrash, IconEye, IconCopy,
@@ -72,6 +73,7 @@ function packGradient(manifest: BundleManifest): string {
 }
 
 export default function Marketplace() {
+  const { t } = useI18n();
   const [bundles, setBundles] = useState<BundleInfo[]>([]);
   const [featuredIndex, setFeaturedIndex] = useState(0);
   const selectedIndex = Math.min(featuredIndex, Math.max(0, bundles.length - 1));
@@ -89,6 +91,11 @@ export default function Marketplace() {
   const [codeInput, setCodeInput] = useState("");
   const [codeImportName, setCodeImportName] = useState("");
   const [codeError, setCodeError] = useState<string | null>(null);
+  // Pack diffing — compare an installed pack against the current look.
+  const [diffTarget, setDiffTarget] = useState<BundleInfo | null>(null);
+  const [diff, setDiff] = useState<PackDiff | null>(null);
+  const [diffError, setDiffError] = useState<string | null>(null);
+  const [diffBusy, setDiffBusy] = useState(false);
 
   const refresh = useCallback(() => {
     call<BundleInfo[]>("marketplace_list_bundles")
@@ -224,38 +231,52 @@ export default function Marketplace() {
     }
   };
 
+  const comparePack = async (b: BundleInfo) => {
+    setDiffTarget(b);
+    setDiff(null);
+    setDiffError(null);
+    setDiffBusy(true);
+    try {
+      const d = await call<PackDiff>("diff_pack", { bundle_id: b.id });
+      setDiff(d);
+    } catch (e) {
+      setDiffError(errorCopy(e));
+    } finally {
+      setDiffBusy(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <header className="page-head">
-        <h1 className="page-title">Pack Marketplace</h1>
+        <h1 className="page-title">{t("marketplace.title")}</h1>
         <p className="page-subtitle">
-          Shareable .reforgepack looks — capture your current setup, install packs from disk, and apply them as one
-          reversible change. Fully local: nothing is downloaded unless you bring a pack file.
+          {t("marketplace.subtitle")}
         </p>
       </header>
 
       <div className="grid gap-5 lg:grid-cols-2">
         <Section
-          title="Export your look"
-          subtitle="Capture accent, mode, wallpaper, video, scene, sounds, fonts, taskbar, cursor & lock screen into a shareable pack"
+          title={t("marketplace.exportTitle")}
+          subtitle={t("marketplace.exportSubtitle")}
         >
           <div className="flex gap-2">
             <input
               className="input"
-              placeholder='Pack name, e.g. "Studio Blue"'
+              placeholder={t("marketplace.exportPlaceholder")}
               value={exportName}
               onChange={(e) => setExportName(e.target.value)}
             />
             <button className="btn-primary shrink-0" onClick={exportLook} disabled={busy || !exportName.trim()}>
-              <IconDownload size={14} /> Capture look
+              <IconDownload size={14} /> {t("marketplace.captureLook")}
             </button>
           </div>
           <p className="mt-2 text-2xs text-[var(--text-tertiary)]">
-            Exports into Reforge's packs folder. Copy that folder to another PC (or zip it) to share.
+            {t("marketplace.exportHint")}
           </p>
         </Section>
 
-        <Section title="Import a pack" subtitle="Point at a .reforgepack folder, or paste a 20-char share code">
+        <Section title={t("marketplace.importTitle")} subtitle={t("marketplace.importSubtitle")}>
           <div className="flex gap-2">
             <input
               className="input"
@@ -264,38 +285,38 @@ export default function Marketplace() {
               onChange={(e) => setImportPath(e.target.value)}
             />
             <button className="btn-ghost shrink-0" onClick={importBundle} disabled={busy || !importPath.trim()}>
-              <IconUpload size={14} /> Import
+              <IconUpload size={14} /> {t("marketplace.importButton")}
             </button>
           </div>
           <div className="mt-3 space-y-2 rounded-xl border border-[var(--border-default)] bg-[var(--surface-overlay)] p-3">
             <div className="text-2xs font-medium uppercase tracking-wider text-[var(--text-tertiary)]">
-              Import from share code (P5-3)
+              {t("marketplace.shareCodeTitle")}
             </div>
             <div className="flex gap-2">
               <input
                 className="input"
-                placeholder="20-character pack code (digits + A–Z)"
+                placeholder={t("marketplace.codePlaceholder")}
                 value={codeInput}
                 onChange={(e) => { setCodeInput(e.target.value); setCodeError(null); }}
                 spellCheck={false}
               />
               <input
                 className="input w-40 shrink-0"
-                placeholder="Pack name"
+                placeholder={t("marketplace.packNamePlaceholder")}
                 value={codeImportName}
                 onChange={(e) => setCodeImportName(e.target.value)}
               />
               <button className="btn-ghost shrink-0" onClick={importFromCode} disabled={busy || !codeInput.trim()}>
-                <IconCheck size={14} /> Import code
+                <IconCheck size={14} /> {t("marketplace.importCodeButton")}
               </button>
             </div>
             {codeError && <p className="text-2xs text-[var(--status-danger-text)]">{codeError}</p>}
             <p className="text-2xs text-[var(--text-tertiary)]">
-              Codes carry the look's settings (accent, mode, taskbar, scene) — media files travel in the pack file itself.
+              {t("marketplace.shareCodeHint")}
             </p>
           </div>
           <p className="mt-2 text-2xs text-[var(--text-tertiary)]">
-            Packs are declarative data only — executable or script content is rejected on import.
+            {t("marketplace.declarativeNote")}
           </p>
         </Section>
       </div>
@@ -317,7 +338,7 @@ export default function Marketplace() {
           }}
         >
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="widget-title">Featured looks</h2>
+            <h2 className="widget-title">{t("marketplace.featuredTitle")}</h2>
             <div className="flex items-center gap-2">
               <button className="btn-ghost btn-sm" aria-label="Previous look" disabled={bundles.length < 2} onClick={() => setFeaturedIndex((selectedIndex + bundles.length - 1) % bundles.length)}>Previous</button>
               <span className="flex items-center gap-1" aria-hidden="true">
@@ -342,8 +363,8 @@ export default function Marketplace() {
 
       {/* Installed Packs Grid */}
       <Section
-        title="Installed packs"
-        subtitle="Apply a pack as a single undoable change — revert the whole look from History"
+        title={t("marketplace.installedTitle")}
+        subtitle={t("marketplace.installedSubtitle")}
         actions={
           <button className="btn-ghost btn-sm shrink-0" onClick={refresh}>
             <IconRefresh size={12} /> Refresh
@@ -352,7 +373,7 @@ export default function Marketplace() {
       >
         {bundles.length === 0 ? (
           <div className="empty-state">
-            No packs installed yet. Capture your current look above, or import one from disk.
+            {t("marketplace.emptyState")}
           </div>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2">
@@ -420,6 +441,13 @@ export default function Marketplace() {
                       <IconEye size={12} /> Preview
                     </button>
                     <button
+                      className="btn-ghost btn-sm flex-1"
+                      onClick={() => comparePack(b)}
+                      title={`Compare "${b.name}" with your current look`}
+                    >
+                      Compare with current
+                    </button>
+                    <button
                       className="btn-ghost btn-sm"
                       onClick={() => sharePackCode(b)}
                       title="Copy a share code for this pack's look (settings only)"
@@ -449,6 +477,52 @@ export default function Marketplace() {
           </div>
         )}
       </Section>
+
+      {/* Pack diff panel — compare an installed pack with the current look */}
+      {diffTarget && (
+        <Section
+          title={`Compare "${diffTarget.name}" with current`}
+          subtitle="Shared component types may differ in value; the rest exist on one side only."
+          actions={
+            <button className="btn-ghost btn-sm shrink-0" onClick={() => { setDiffTarget(null); setDiff(null); setDiffError(null); }}>
+              Close
+            </button>
+          }
+        >
+          {diffBusy && (
+            <div className="skeleton-pulse rounded-xl border border-[var(--border-default)] p-4 text-xs text-[var(--text-tertiary)]">
+              Comparing…
+            </div>
+          )}
+          {diffError && <InlineAlert kind="error">{diffError}</InlineAlert>}
+          {diff && !diffBusy && (
+            <div className="grid gap-4 sm:grid-cols-3">
+              {(
+                [
+                  { key: "differs", label: "Differs", items: diff.differs },
+                  { key: "only_current", label: "Only in current", items: diff.only_current },
+                  { key: "only_pack", label: "Only in pack", items: diff.only_pack },
+                ] as const
+              ).map((group) => (
+                <div key={group.key}>
+                  <div className="mb-2 text-2xs font-medium uppercase tracking-wider text-[var(--text-tertiary)]">
+                    {group.label} ({group.items.length})
+                  </div>
+                  {group.items.length === 0 ? (
+                    <p className="text-xs text-[var(--text-tertiary)]">None — identical here.</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5">
+                      {group.items.map((item) => (
+                        <KindChip key={item} kind={item} />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </Section>
+      )}
 
       {/* Preview Modal */}
       <Modal
