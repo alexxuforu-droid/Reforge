@@ -1,4 +1,4 @@
-use crate::error::AppError;
+use crate::error::{registry_err, AppError};
 use crate::state::AppState;
 use crate::undo;
 use serde::{Deserialize, Serialize};
@@ -53,7 +53,7 @@ pub struct CursorScheme {
 fn cursor_key() -> Result<RegKey, AppError> {
     RegKey::predef(HKEY_CURRENT_USER)
         .open_subkey_with_flags(CURSORS_KEY, KEY_QUERY_VALUE | KEY_SET_VALUE)
-        .map_err(|e| AppError::Command(e.to_string()))
+        .map_err(|e| registry_err(r"HKCU\Control Panel\Cursors".to_string(), e))
 }
 
 pub fn read_cursor_state() -> CursorState {

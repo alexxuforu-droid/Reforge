@@ -130,6 +130,170 @@ fn empty_manifest(name: String) -> BundleManifest {
     }
 }
 
+// ---- pack diffing (Bet: Pack diffing) -----------------------------------------
+//
+// Read-only comparison of an installed bundle manifest against the current
+// theme state. This performs no mutation, so no undo entry is logged (undo
+// entries are written BEFORE mutations; there are none here). All paths are
+// built with PathBuf::join — never shell-string concat from user input.
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct PackDiff {
+    pub bundle_id: String,
+    pub differs: Vec<String>,
+    pub only_current: Vec<String>,
+    pub only_pack: Vec<String>,
+}
+
+fn validate_bundle_id(id: &str) -> Result<(), AppError> {
+    if id.is_empty() {
+        return Err(AppError::Invalid("Bundle id must not be empty.".into()));
+    }
+    if id.len() > 128 {
+        return Err(AppError::Invalid(
+            "Bundle id is too long (max 128 chars).".into(),
+        ));
+    }
+    if id.chars().any(|c| c.is_control()) {
+        return Err(AppError::Invalid(
+            "Bundle id contains control characters.".into(),
+        ));
+    }
+    if id.contains('/') || id.contains('\\') {
+        return Err(AppError::Invalid(
+            "Bundle id must not contain path separators.".into(),
+        ));
+    }
+    Ok(())
+}
+
+/// Flatten one pack component to a (key, value) pair for comparison.
+/// Keys are stable across pack/current sides; suffix-keyed variants
+/// (sound_event:<event>, scene:<id>, font_sub:<original>) keep per-item diffs.
+fn pack_component_entry(comp: &BundleComponent) -> (String, String) {
+    match comp {
+        BundleComponent::Accent { hex } => ("accent".into(), hex.clone()),
+        BundleComponent::ThemeMode { mode } => ("theme_mode".into(), mode.clone()),
+        BundleComponent::Wallpaper { asset } => ("wallpaper".into(), asset.clone()),
+        BundleComponent::Video { asset } => ("video".into(), asset.clone()),
+        BundleComponent::Taskbar {
+            size,
+            alignment,
+            autohide,
+        } => (
+            "taskbar".into(),
+            format!(
+                "size={:?} alignment={:?} autohide={:?}",
+                size, alignment, autohide
+            ),
+        ),
+        BundleComponent::Cursor { scheme } => ("cursor".into(), scheme.clone()),
+        BundleComponent::SoundScheme { guid } => ("sound_scheme".into(), guid.clone()),
+        BundleComponent::SoundEvent { event, asset } => {
+            (format!("sound_event:{}", event), asset.clone())
+        }
+        BundleComponent::Scene {
+            id,
+            kind,
+            speed,
+            density,
+            colors,
+        } => (
+            format!("scene:{}", id),
+            format!(
+                "{} speed={} density={} colors={}",
+                kind,
+                speed,
+                density,
+                colors.join(",")
+            ),
+        ),
+        BundleComponent::FontSub {
+            original,
+            substitute,
+        } => (format!("font_sub:{}", original), substitute.clone()),
+        BundleComponent::LockScreen { mode, asset } => (
+            "lock_screen".into(),
+            format!("{}|{}", mode, asset.as_deref().unwrap_or("")),
+        ),
+    }
+}
+
+/// Current theme state, reusing the existing getters (no duplicated logic):
+/// live accent/mode from theme.rs, persisted style record from styles.rs.
+fn current_theme_map(state: &AppState) -> std::collections::HashMap<String, String> {
+    let mut map = std::collections::HashMap::new();
+    map.insert("accent".to_string(), crate::theme::current_accent_hex());
+    map.insert("theme_mode".to_string(), crate::theme::current_mode());
+    if let Some(rec) = crate::styles::load_applied_style(&state.data_dir) {
+        map.insert("applied_style".to_string(), rec.id);
+        if let Some(v) = rec.payload.accent_hex {
+            map.insert("applied_style:accent".to_string(), v);
+        }
+        if let Some(v) = rec.payload.mode {
+            map.insert("applied_style:mode".to_string(), v);
+        }
+        if let Some(v) = rec.payload.transparency {
+            map.insert("applied_style:transparency".to_string(), v.to_string());
+        }
+        if let Some(v) = rec.payload.wallpaper {
+            map.insert("applied_style:wallpaper".to_string(), v);
+        }
+    }
+    map
+}
+
+/// Compare an installed bundle manifest against the current theme state.
+///
+/// Read-only: performs no mutation, so no undo entry is logged.
+fn diff_pack_inner(state: &AppState, bundle_id: String) -> Result<PackDiff, AppError> {
+    validate_bundle_id(&bundle_id)?;
+    // Existing manifest load path in this file: packs/{id}.reforgepack/manifest.json.
+    let manifest_path = bundle_dir(state, &bundle_id).join("manifest.json");
+    let m: BundleManifest = load_json(&manifest_path, empty_manifest(String::new()));
+    if m.id.is_empty() {
+        return Err(AppError::NotFound(format!(
+            "Bundle '{}' not found.",
+            bundle_id
+        )));
+    }
+    let mut pack_map = std::collections::HashMap::new();
+    for comp in &m.components {
+        let (k, v) = pack_component_entry(comp);
+        pack_map.insert(k, v);
+    }
+    let current = current_theme_map(state);
+    let mut keys: Vec<&String> = pack_map.keys().chain(current.keys()).collect();
+    keys.sort();
+    keys.dedup();
+    let mut differs = Vec::new();
+    let mut only_current = Vec::new();
+    let mut only_pack = Vec::new();
+    for k in keys {
+        match (current.get(k), pack_map.get(k)) {
+            (Some(c), Some(p)) => {
+                if c != p {
+                    differs.push(k.clone());
+                }
+            }
+            (Some(_), None) => only_current.push(k.clone()),
+            (None, Some(_)) => only_pack.push(k.clone()),
+            (None, None) => {}
+        }
+    }
+    Ok(PackDiff {
+        bundle_id,
+        differs,
+        only_current,
+        only_pack,
+    })
+}
+
+#[tauri::command]
+pub fn diff_pack(state: State<'_, AppState>, bundle_id: String) -> Result<PackDiff, AppError> {
+    diff_pack_inner(&state, bundle_id)
+}
+
 fn list_bundles(state: &AppState) -> Vec<BundleInfo> {
     let dir = bundles_dir(state);
     // a pack counts as "applied" if the undo log has a marketplace_apply for it
@@ -1008,5 +1172,103 @@ mod tests {
         std::fs::write(t.0.join("assets/wall.png"), b"PNG tampered").unwrap();
         let c = bundle_checksum(&t.0);
         assert_ne!(a, c, "tampering must change the checksum");
+    }
+
+    #[test]
+    fn diff_empty_bundle_id_rejected() {
+        let t = TestDir::new();
+        let state = crate::state::AppState {
+            data_dir: t.0.clone(),
+        };
+        let err = diff_pack_inner(&state, String::new()).unwrap_err();
+        assert!(matches!(err, AppError::Invalid(_)), "got: {}", err);
+    }
+
+    #[test]
+    fn diff_unknown_bundle_not_found() {
+        let t = TestDir::new();
+        let state = crate::state::AppState {
+            data_dir: t.0.clone(),
+        };
+        let err = diff_pack_inner(&state, "no-such-pack".into()).unwrap_err();
+        assert!(matches!(err, AppError::NotFound(_)), "got: {}", err);
+    }
+
+    #[test]
+    fn diff_shape() {
+        let t = TestDir::new();
+        let state = crate::state::AppState {
+            data_dir: t.0.clone(),
+        };
+        // Live values via the existing getters, then deliberately different
+        // pack values so the diff outcome is deterministic on any machine.
+        let live_accent = crate::theme::current_accent_hex();
+        let pack_accent = if live_accent.to_uppercase() == "#FFFFFF" {
+            "#000000"
+        } else {
+            "#FFFFFF"
+        };
+        let live_mode = crate::theme::current_mode();
+        let pack_mode = if live_mode == "dark" { "light" } else { "dark" };
+        let id = "diff-shape-pack";
+        let m = BundleManifest {
+            id: id.into(),
+            name: "Shape".into(),
+            version: "1.0".into(),
+            author: "test".into(),
+            description: String::new(),
+            license: String::new(),
+            tags: Vec::new(),
+            thumbnail: String::new(),
+            checksum: String::new(),
+            schema_version: 2,
+            changelog: Vec::new(),
+            components: vec![
+                BundleComponent::Accent {
+                    hex: pack_accent.into(),
+                },
+                BundleComponent::ThemeMode {
+                    mode: pack_mode.into(),
+                },
+                BundleComponent::Cursor {
+                    scheme: "diff-shape-test-scheme".into(),
+                },
+            ],
+        };
+        let dir = t.0.join("packs").join(format!("{}.reforgepack", id));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("manifest.json"),
+            serde_json::to_string(&m).unwrap(),
+        )
+        .unwrap();
+        let d = diff_pack_inner(&state, id.into()).unwrap();
+        assert_eq!(d.bundle_id, id);
+        assert!(
+            d.differs.contains(&"accent".to_string()),
+            "differs: {:?}",
+            d.differs
+        );
+        assert!(
+            d.differs.contains(&"theme_mode".to_string()),
+            "differs: {:?}",
+            d.differs
+        );
+        assert!(
+            d.only_pack.contains(&"cursor".to_string()),
+            "only_pack: {:?}",
+            d.only_pack
+        );
+        // Scratch data_dir holds no applied_style.json, and every live key
+        // (accent, theme_mode) is covered by the pack, so nothing is
+        // current-only.
+        assert!(
+            d.only_current.is_empty(),
+            "only_current: {:?}",
+            d.only_current
+        );
+        let mut sorted = d.differs.clone();
+        sorted.sort();
+        assert_eq!(d.differs, sorted, "differs must be sorted");
     }
 }

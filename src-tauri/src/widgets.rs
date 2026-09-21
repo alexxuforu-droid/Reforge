@@ -768,6 +768,121 @@ pub fn push_stats(
     });
 }
 
+// ---- Widget gallery share --------------------------------------------------
+// Offline share payload for the widget gallery bet: the widget's full config
+// travels as JSON; `share_id` is a 20-char checksum-style code mirroring the
+// pack share-code scheme in `src/lib/shareCodes.ts` (19 Crockford base32
+// payload chars + 1 checksum char = sum of payload char indices mod 32, over
+// the same `0123456789ABCDEFGHJKMNPQRSTVWXYZ` alphabet with no I/L/O/U). The
+// payload bits come from a fresh UUID (masked to 95 bits = 19 * 5), so every
+// export mints a unique code and a mangled code fails the checksum instead of
+// importing a different widget.
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct WidgetShare {
+    pub share_id: String,
+    pub widget_id: String,
+    pub config: serde_json::Value,
+}
+
+fn validate_widget_id(widget_id: &str) -> Result<(), AppError> {
+    if widget_id.trim().is_empty() {
+        return Err(AppError::Invalid("Widget id must not be empty.".into()));
+    }
+    if widget_id.chars().count() > 128 {
+        return Err(AppError::Invalid("Widget id must be <= 128 chars.".into()));
+    }
+    if widget_id.chars().any(|c| c.is_control()) {
+        return Err(AppError::Invalid(
+            "Widget id must not contain control chars.".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn new_share_id() -> String {
+    const ALPHABET: &[u8] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+    let bytes = Uuid::new_v4().into_bytes();
+    let v = u128::from_le_bytes(bytes) & ((1u128 << 95) - 1);
+    let mut payload = String::with_capacity(19);
+    for i in (0..19).rev() {
+        let idx = ((v >> (5 * i)) & 31) as usize;
+        payload.push(ALPHABET[idx] as char);
+    }
+    let sum: usize = payload
+        .chars()
+        .map(|c| ALPHABET.iter().position(|&a| a as char == c).unwrap_or(0))
+        .sum();
+    payload.push(ALPHABET[sum % 32] as char);
+    payload
+}
+
+fn export_widget_share_inner(state: &AppState, widget_id: String) -> Result<WidgetShare, AppError> {
+    validate_widget_id(&widget_id)?;
+    let list = load_widgets(state);
+    let found = list
+        .iter()
+        .find(|w| w.id == widget_id)
+        .ok_or_else(|| AppError::NotFound(format!("widget {}", widget_id)))?;
+    let config = serde_json::to_value(found).map_err(|e| AppError::Invalid(e.to_string()))?;
+    Ok(WidgetShare {
+        share_id: new_share_id(),
+        widget_id,
+        config,
+    })
+}
+
+#[tauri::command]
+pub fn export_widget_share(
+    state: State<'_, AppState>,
+    widget_id: String,
+) -> Result<WidgetShare, AppError> {
+    export_widget_share_inner(&state, widget_id)
+}
+
+fn import_widget_share_inner(state: &AppState, share: WidgetShare) -> Result<(), AppError> {
+    validate_widget_id(&share.widget_id)?;
+    if share.share_id.trim().is_empty() {
+        return Err(AppError::Invalid("Share id must not be empty.".into()));
+    }
+    if share.share_id.chars().any(|c| c.is_control()) {
+        return Err(AppError::Invalid(
+            "Share id must not contain control chars.".into(),
+        ));
+    }
+    let mut cfg: WidgetConfig = serde_json::from_value(share.config.clone())
+        .map_err(|e| AppError::Invalid(e.to_string()))?;
+    // Pin the stored id to the share's validated widget_id so the imported
+    // widget lands under exactly the identity that was validated above.
+    cfg.id = share.widget_id.clone();
+    // Undo BEFORE mutation: snapshot the pre-import layout so revert restores
+    // it exactly (typed Result end-to-end; kind "widget_layout").
+    let before = load_widgets(state);
+    undo::log_entry(
+        state,
+        "widget_layout",
+        format!("Imported shared widget {}", share.widget_id),
+        json!({
+            "widget_id": share.widget_id,
+            "share_id": share.share_id,
+            "before": before,
+        }),
+        true,
+    )?;
+    let mut list = before;
+    if let Some(slot) = list.iter_mut().find(|w| w.id == cfg.id) {
+        *slot = cfg;
+    } else {
+        list.push(cfg);
+    }
+    save_widgets(state, &list)
+}
+
+#[tauri::command]
+pub fn import_widget_share(state: State<'_, AppState>, share: WidgetShare) -> Result<(), AppError> {
+    import_widget_share_inner(&state, share)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -983,5 +1098,127 @@ mod tests {
         let (x, y) = clamp_to_virtual_screen(-100.0, -50.0, 240.0, 160.0);
         assert!((-200.0..=0.0).contains(&x), "x={x} must not jump far left");
         assert!((-120.0..=0.0).contains(&y), "y={y} must not jump far up");
+    }
+
+    // ---- widget gallery share ----
+
+    fn scratch_state() -> AppState {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static SEQ: AtomicU64 = AtomicU64::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "reforge-widget-share-test-{}-{}-{}",
+            std::process::id(),
+            SEQ.fetch_add(1, Ordering::Relaxed),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        AppState { data_dir: dir }
+    }
+
+    fn seed_widget(state: &AppState, id: &str) -> WidgetConfig {
+        let w = WidgetConfig {
+            id: id.into(),
+            kind: "note".into(),
+            x: 10.0,
+            y: 20.0,
+            w: 260.0,
+            h: 200.0,
+            title: "Shared note".into(),
+            content: "hello gallery".into(),
+            visible: true,
+            monitor: 0,
+        };
+        save_widgets(state, &vec![w.clone()]).unwrap();
+        w
+    }
+
+    #[test]
+    fn export_unknown_widget_not_found() {
+        let state = scratch_state();
+        let err = export_widget_share_inner(&state, "no-such-widget".into()).unwrap_err();
+        assert!(
+            matches!(err, AppError::NotFound(_)),
+            "unknown widget must be NotFound, got: {}",
+            err
+        );
+        let _ = std::fs::remove_dir_all(&state.data_dir);
+    }
+
+    #[test]
+    fn import_rejects_control_chars() {
+        let state = scratch_state();
+        for bad in ["bad\nid", "bad\tid", "bad\rid"] {
+            let share = WidgetShare {
+                share_id: "0123456789ABCDEFGHJK".into(),
+                widget_id: bad.into(),
+                config: serde_json::json!({}),
+            };
+            let err = import_widget_share_inner(&state, share).unwrap_err();
+            assert!(
+                matches!(err, AppError::Invalid(_)),
+                "control chars must be Invalid, got: {}",
+                err
+            );
+        }
+        assert!(
+            !widgets_path(&state).exists(),
+            "rejected imports must not create widgets.json"
+        );
+        let _ = std::fs::remove_dir_all(&state.data_dir);
+    }
+
+    #[test]
+    fn roundtrip() {
+        let src = scratch_state();
+        let seeded = seed_widget(&src, "w-roundtrip");
+        let share = export_widget_share_inner(&src, "w-roundtrip".into()).unwrap();
+        assert_eq!(
+            share.share_id.chars().count(),
+            20,
+            "share_id must be 20 chars"
+        );
+        assert!(
+            share
+                .share_id
+                .chars()
+                .all(|c| "0123456789ABCDEFGHJKMNPQRSTVWXYZ".contains(c)),
+            "share_id must be Crockford base32, got: {}",
+            share.share_id
+        );
+        // checksum: last char == sum of the 19 payload char indices mod 32
+        let alpha: Vec<char> = "0123456789ABCDEFGHJKMNPQRSTVWXYZ".chars().collect();
+        let idx = |c: char| alpha.iter().position(|&a| a == c).unwrap_or(0);
+        let sum: usize = share.share_id.chars().take(19).map(idx).sum();
+        assert_eq!(
+            share.share_id.chars().nth(19).unwrap(),
+            alpha[sum % 32],
+            "share_id checksum must verify"
+        );
+
+        let dst = scratch_state();
+        import_widget_share_inner(&dst, share.clone()).unwrap();
+        let stored: Vec<WidgetConfig> = load_widgets(&dst);
+        assert_eq!(stored.len(), 1);
+        let back = serde_json::to_value(&stored[0]).unwrap();
+        assert_eq!(
+            back, share.config,
+            "imported config must equal exported config"
+        );
+        assert_eq!(
+            serde_json::to_value(&seeded).unwrap(),
+            share.config,
+            "exported config must equal the stored widget"
+        );
+        // undo trail: one revertible widget_layout entry logged BEFORE the write
+        let entries = crate::undo::load_undo_entries(&dst);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].kind, "widget_layout");
+        assert!(entries[0].revertible);
+        assert!(entries[0].data.get("before").is_some());
+        let _ = std::fs::remove_dir_all(&src.data_dir);
+        let _ = std::fs::remove_dir_all(&dst.data_dir);
     }
 }

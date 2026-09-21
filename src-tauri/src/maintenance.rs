@@ -130,7 +130,8 @@ fn run_maintenance_inner(state: &AppState) -> Result<MaintenanceReport, AppError
         notes,
     };
 
-    std::fs::create_dir_all(reports_dir(state)).map_err(|e| AppError::Command(e.to_string()))?;
+    std::fs::create_dir_all(reports_dir(state))
+        .map_err(|e| io_err(reports_dir(state).display().to_string(), e))?;
     let path = reports_dir(state).join(format!("{}.json", report.ts));
     save_json(&path, &report)?;
 
@@ -215,7 +216,7 @@ pub struct AutopilotReport {
     pub report_id: String,
 }
 
-pub fn run_autopilot(state: &AppState) -> Result<AutopilotReport, AppError> {
+fn run_autopilot_inner(state: &AppState) -> Result<AutopilotReport, AppError> {
     // Snapshot storage radar BEFORE.
     let before = crate::storage::scan_storage_radar();
     let before_used: u64 = before.iter().map(|d| d.used).sum();
@@ -277,6 +278,16 @@ pub fn run_autopilot(state: &AppState) -> Result<AutopilotReport, AppError> {
     Ok(report)
 }
 
+/// P3-5-style async wrapper so the Tune-up view stays responsive while the
+/// autopilot sweeps (same spawn_blocking pattern as `run_maintenance`).
+#[tauri::command]
+pub async fn run_autopilot(state: State<'_, AppState>) -> Result<AutopilotReport, AppError> {
+    let st = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || run_autopilot_inner(&st))
+        .await
+        .map_err(|e| AppError::Command(format!("autopilot aborted: {}", e)))?
+}
+
 #[cfg(test)]
 mod autopilot_tests {
     use super::*;
@@ -296,7 +307,7 @@ mod autopilot_tests {
     #[test]
     fn autopilot_report_shape() {
         let state = scratch_state();
-        let report = run_autopilot(&state).expect("autopilot should succeed");
+        let report = run_autopilot_inner(&state).expect("autopilot should succeed");
         assert!(!report.report_id.is_empty());
         assert!(report.cleaned_mb < u64::MAX);
         assert!(report.dupes_removed < u64::MAX);

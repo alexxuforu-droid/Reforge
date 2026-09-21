@@ -34,7 +34,7 @@ fn schedules_path(state: &AppState) -> std::path::PathBuf {
     state.data_dir.join("look_schedules.json")
 }
 
-pub fn schedule_look(state: &AppState, sched: LookSchedule) -> Result<(), AppError> {
+fn schedule_look_inner(state: &AppState, sched: LookSchedule) -> Result<(), AppError> {
     if sched.app.trim().is_empty() {
         return Err(AppError::Invalid("App must not be empty.".into()));
     }
@@ -74,6 +74,15 @@ pub fn schedule_look(state: &AppState, sched: LookSchedule) -> Result<(), AppErr
     }
     save_json(&schedules_path(state), &schedules)?;
     Ok(())
+}
+
+/// Task 8 — Look rotator schedule command.
+#[tauri::command]
+pub fn schedule_look(
+    state: tauri::State<'_, AppState>,
+    sched: LookSchedule,
+) -> Result<(), AppError> {
+    schedule_look_inner(&state, sched)
 }
 
 pub fn match_look(running_path: &str, rules: &[AppLookRule]) -> Option<String> {
@@ -257,7 +266,7 @@ mod match_tests {
             },
         ] {
             assert!(matches!(
-                schedule_look(&state, sched),
+                schedule_look_inner(&state, sched),
                 Err(AppError::Invalid(_))
             ));
         }
@@ -272,7 +281,7 @@ mod match_tests {
             cron: "0\t9 * * *".into(),
         };
         assert!(matches!(
-            schedule_look(&state, sched),
+            schedule_look_inner(&state, sched),
             Err(AppError::Invalid(_))
         ));
         assert!(!schedules_path(&state).exists());

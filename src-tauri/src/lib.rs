@@ -430,6 +430,8 @@ pub fn run() {
             widgets::widget_open_view,
             widgets::get_widgets_settings,
             widgets::set_widgets_settings,
+            widgets::export_widget_share,
+            widgets::import_widget_share,
             perf::get_widget_stats,
             power::get_power_state,
             power::set_power_plan,
@@ -441,6 +443,7 @@ pub fn run() {
             gaming::apply_game_profile,
             applooks::list_app_look_rules,
             applooks::set_app_look_rules,
+            applooks::schedule_look,
             productivity::start_focus_session,
             productivity::stop_focus_session,
             productivity::get_focus_session,
@@ -591,6 +594,7 @@ pub fn run() {
             dashboard::get_dashboard_summary,
             // maintenance
             maintenance::run_maintenance,
+            maintenance::run_autopilot,
             maintenance::list_reports,
             maintenance::archive_report,
             maintenance::get_user_folders,
@@ -640,6 +644,7 @@ pub fn run() {
             marketplace::marketplace_delete_bundle,
             marketplace::marketplace_preview_asset,
             marketplace::marketplace_import_components,
+            marketplace::diff_pack,
             // shell
             shell::shell_get_taskbar_state,
             shell::shell_get_taskbar_capabilities,
