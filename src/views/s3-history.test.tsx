@@ -118,6 +118,19 @@ describe("S3.12 History depth", () => {
     expect(screen.getByText("Accent color → #0067C0")).toBeInTheDocument();
   });
 
+  it("toggles reverted-only", async () => {
+    render(<History />);
+    await waitFor(() => expect(screen.getByText("Accent color → #0067C0")).toBeInTheDocument(), { timeout: 5000 });
+
+    // only e5 ("Wallpaper → Ashes") is already reverted (undone)
+    fireEvent.click(screen.getByRole("switch", { name: "Only show reverted changes" }));
+    expect(screen.getByText("Wallpaper → Ashes")).toBeInTheDocument();
+    expect(screen.queryByText("Accent color → #0067C0")).not.toBeInTheDocument();
+    expect(screen.queryByText("Wallpaper → Midnight Rain")).not.toBeInTheDocument();
+    expect(screen.queryByText("Disabled Spotify at startup")).not.toBeInTheDocument();
+    expect(screen.queryByText("Theme mode → dark")).not.toBeInTheDocument();
+  });
+
   it("batch-reverts selected entries with one confirm", async () => {
     render(<History />);
     await waitFor(() => expect(screen.getByText("Accent color → #0067C0")).toBeInTheDocument(), { timeout: 5000 });
@@ -168,5 +181,26 @@ describe("X-4 while-you-were-away panel", () => {
     await waitFor(() => expect(screen.getByText(/Makeover History Timeline/)).toBeInTheDocument(), { timeout: 5000 });
     expect(screen.queryByText("While you were away")).not.toBeInTheDocument();
     localStorage.removeItem("reforge-prev-launch");
+  });
+
+  it("away panel respects the kind filter (no unfiltered second list)", async () => {
+    // Regression: AwayPanel rendered raw `undo` and bypassed `filtered`, so a
+    // kind filter hid the timeline row but left the panel's
+    // <li title={description}> visible (E2E: kind `cursors` hid nothing).
+    localStorage.setItem("reforge-prev-launch", String(Date.now() - 5400_000));
+    try {
+      render(<History />);
+      await waitFor(() => expect(screen.getByText("While you were away")).toBeInTheDocument(), { timeout: 5000 });
+      fireEvent.click(screen.getByRole("button", { name: "Filter by change kind" }));
+      fireEvent.click(await screen.findByRole("option", { name: "cursors" }));
+      await waitFor(
+        () => expect(screen.getByText("No changes match the current filters.")).toBeInTheDocument(),
+        { timeout: 5000 },
+      );
+      expect(screen.queryByText("While you were away")).not.toBeInTheDocument();
+      expect(document.querySelector('li[title="Accent color → #0067C0"]')).toBeNull();
+    } finally {
+      localStorage.removeItem("reforge-prev-launch");
+    }
   });
 });

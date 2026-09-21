@@ -35,7 +35,7 @@ test("duplicates scan stages copies to trash and emptying is confirm-gated", asy
 test("guided makeover applies a look and History restores the previous look", async ({ page }) => {
   await openApp(page);
   const before = await state(page);
-  await navigate(page, "Makeover");
+  await navigate(page, "Makeover session");
   await page.getByRole("button", { name: "Take a snapshot", exact: true }).click();
   await expect(page.getByRole("button", { name: "Clean & continue →", exact: true })).toBeEnabled();
   await expect.poll(async () => (await state(page)).snapshots.length).toBe(1);
@@ -174,4 +174,38 @@ test("factory fresh restores the pre-makeover theme", async ({ page }) => {
   await expect(dialog).toContainText("Revert your PC to pre-makeover state?");
   await dialog.getByRole("button", { name: "Yes, revert everything", exact: true }).click();
   await expect.poll(async () => (await state(page)).theme).toEqual(before.theme);
+});
+
+test("history filter narrows timeline", async ({ page }) => {
+  await openApp(page);
+  await navigate(page, "Marketplace");
+  const card = packCard(page, "Amber Retro");
+  await card.getByRole("button", { name: "Apply", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText('Apply "Amber Retro"?');
+  await dialog.getByRole("button", { name: "Apply pack", exact: true }).click();
+  await expect.poll(async () => (await state(page)).undo[0]).toMatchObject({ kind: "marketplace_apply", revertible: true });
+  await navigate(page, "History");
+  await expect(page.getByRole("listitem", { name: "Applied pack: Amber Retro" })).toBeVisible();
+  // a non-matching kind hides the pack row and shows the empty-filter state
+  // NOTE (diagnosis): pack apply logs a single composite `marketplace_apply`
+  // entry — marketplace.rs apply_bundle_inner (single log_entry at the end;
+  // per-component applies use *_raw helpers that log nothing) and the mock
+  // agrees (share.ts pushes one entry). History.tsx filters by exact kind
+  // equality (History.tsx:82, unit-proven by s3-history.test.tsx), so neither
+  // hypothesized bug (substring match / extra `wallpaper` entry) exists in
+  // code. "cursors" is still the safer hide-step kind: it unambiguously
+  // matches nothing in this log and sits near the top of the ~90-option kind
+  // dropdown (vs "wallpaper" 5th-from-last), minimizing option-click risk.
+  await page.getByRole("button", { name: "Filter by change kind" }).click();
+  await page.getByRole("option", { name: "cursors", exact: true }).click();
+  // fail fast with a clear message if the option click ever misses — otherwise
+  // the toBeHidden below times out confusingly with the row still visible
+  await expect(page.getByRole("button", { name: "Filter by change kind" })).toContainText("cursors");
+  await expect(page.getByRole("listitem", { name: "Applied pack: Amber Retro" })).toBeHidden();
+  await expect(page.getByText("No changes match the current filters.", { exact: true })).toBeVisible();
+  // the matching kind brings the row back
+  await page.getByRole("button", { name: "Filter by change kind" }).click();
+  await page.getByRole("option", { name: "marketplace apply", exact: true }).click();
+  await expect(page.getByRole("listitem", { name: "Applied pack: Amber Retro" })).toBeVisible();
 });

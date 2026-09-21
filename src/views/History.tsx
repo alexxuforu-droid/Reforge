@@ -57,6 +57,7 @@ export default function History() {
   const [query, setQuery] = useState("");
   const [kindFilter, setKindFilter] = useState("all");
   const [onlyRevertible, setOnlyRevertible] = useState(false);
+  const [onlyReverted, setOnlyReverted] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [batchOpen, setBatchOpen] = useState(false);
@@ -73,17 +74,18 @@ export default function History() {
   // reset the selection so "Revert N" always matches what's visible.
   useEffect(() => {
     setSelected(new Set());
-  }, [query, kindFilter, onlyRevertible]);
+  }, [query, kindFilter, onlyRevertible, onlyReverted]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return undo.filter((e) => {
       if (kindFilter !== "all" && e.kind !== kindFilter) return false;
       if (onlyRevertible && !e.revertible) return false;
+      if (onlyReverted && !e.undone) return false;
       if (q && !e.description.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [undo, query, kindFilter, onlyRevertible]);
+  }, [undo, query, kindFilter, onlyRevertible, onlyReverted]);
 
   const revert = async (id: string) => {
     setReverting(id);
@@ -331,7 +333,7 @@ export default function History() {
           )
         }
       >
-        <AwayPanel entries={undo} t={t} />
+        <AwayPanel entries={filtered} t={t} />
         {/* S3.12 — filters */}
         <div className="mb-4 flex flex-wrap items-center gap-3">
           <div className="relative min-w-0 flex-1 basis-52">
@@ -356,6 +358,10 @@ export default function History() {
           <div className="flex items-center gap-2">
             <span className="text-2xs uppercase tracking-wide text-[var(--text-tertiary)]">Reversible only</span>
             <Toggle on={onlyRevertible} onChange={setOnlyRevertible} label="Only show reversible changes" />
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-2xs uppercase tracking-wide text-[var(--text-tertiary)]">Reverted only</span>
+            <Toggle on={onlyReverted} onChange={setOnlyReverted} label="Only show reverted changes" />
           </div>
           {selectMode && selected.size > 0 && (
             <button className="btn-danger" onClick={() => setBatchOpen(true)} disabled={batching}>

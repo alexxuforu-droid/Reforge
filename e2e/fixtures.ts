@@ -68,7 +68,7 @@ export function packCard(page: Page, name: string) {
 export async function revertHistory(page: Page, description: string) {
   await navigate(page, "History");
   await page.getByRole("textbox", { name: "Search history descriptions" }).fill(description);
-  await expect(page.getByTitle(description, { exact: true })).toBeVisible();
+  await expect(page.getByRole("listitem", { name: description })).toBeVisible();
   await page.getByRole("button", { name: "Revert", exact: true }).click();
   await expect(page.getByText("reverted", { exact: true })).toBeVisible();
   await expect.poll(async () => (await state(page)).undo.find((entry) => entry.description === description)?.undone).toBe(true);
