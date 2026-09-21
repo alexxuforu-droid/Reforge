@@ -47,10 +47,12 @@ const COMMANDS = [
   "shell_apply_pending_restart", "shell_revert_pending", "get_capability_matrix",
   "get_undo_log", "revert_entry", "snapshot_now", "list_snapshots", "restore_snapshot",
   "get_undo_digest", "get_dashboard_summary",
+  "run_autopilot", "schedule_look", "diff_pack",
   "bundle_diagnostics",
   "apply_style", "get_applied_style",
   "get_favorites", "set_favorite",
   "get_update_config", "set_update_config", "check_for_update", "download_update", "apply_staged_update",
+  "export_widget_share", "import_widget_share",
 ];
 
 const STATIC_STYLE = {
@@ -273,5 +275,103 @@ describe("v1.1 Task 2 digest + summary", () => {
     const log: any[] = await call("get_undo_log");
     expect(s.undo_total).toBe(log.length);
     expect(JSON.stringify(s).length).toBeLessThan(500);
+  });
+});
+
+describe("v1.1 Task 8 autopilot + look rotator", () => {
+  it("autopilot returns a before/after report", async () => {
+    const r: any = await call("run_autopilot");
+    expect(r.cleaned_mb).toBeGreaterThanOrEqual(0);
+    expect(r.dupes_removed).toBeGreaterThanOrEqual(0);
+    expect(r.report_id).toBeTruthy();
+  });
+
+  it("autopilot appends an undo entry to the mock store", async () => {
+    const before: any[] = await call("get_undo_log");
+    await call("run_autopilot");
+    const after: any[] = await call("get_undo_log");
+    expect(after.length).toBeGreaterThan(before.length);
+    expect(after[0].kind).toBe("autopilot_report");
+  });
+
+  it("schedule_look rejects an empty app with an Invalid error", async () => {
+    await expect(
+      call("schedule_look", { sched: { app: "", look_id: "Retro Wave", cron: "0 9 * * *" } }),
+    ).rejects.toMatchObject({ kind: "Invalid" });
+    const { errorCopy } = await import("./api");
+    expect(errorCopy({ kind: "Invalid", message: "App must not be empty." })).toContain(
+      "App must not be empty.",
+    );
+  });
+
+  it("schedule_look accepts a valid schedule", async () => {
+    await expect(
+      call("schedule_look", { sched: { app: "steam", look_id: "Retro Wave", cron: "0 9 * * *" } }),
+    ).resolves.toBeNull();
+  });
+});
+
+describe("widget gallery share", () => {
+  it("export returns a 20-char share_id with the widget id + config echo", async () => {
+    await call("fun_set_config", { id: "fire", patch: { threshold: 90 } });
+    const share: any = await call("export_widget_share", {
+      widget_id: "fire",
+    });
+    expect(share.widget_id).toBe("fire");
+    expect(typeof share.share_id).toBe("string");
+    expect(share.share_id).toHaveLength(20);
+    expect(share.share_id).toMatch(/^[A-Za-z0-9]{20}$/);
+    expect(share.config).toEqual({ threshold: 90 });
+  });
+
+  it("export rejects an empty widget id with an Invalid error", async () => {
+    await expect(call("export_widget_share", { widget_id: "" })).rejects.toMatchObject({
+      kind: "Invalid",
+    });
+  });
+
+  it("import validates the shape and merges the widget into the store", async () => {
+    await expect(call("import_widget_share", { share: { widget_id: "", config: {} } }))
+      .rejects.toMatchObject({ kind: "Invalid" });
+    await expect(
+      call("import_widget_share", { share: { widget_id: "fire", config: null } }),
+    ).rejects.toMatchObject({ kind: "Invalid" });
+    await expect(
+      call("import_widget_share", {
+        share: { share_id: "too-short", widget_id: "fire", config: { threshold: 90 } },
+      }),
+    ).rejects.toMatchObject({ kind: "Invalid" });
+
+    await call("fun_set_config", { id: "roast", patch: { minutes: 7 } });
+    const exported: any = await call("export_widget_share", {
+      widget_id: "roast",
+    });
+    const imported: any = await call("import_widget_share", { share: exported });
+    expect(imported.widget_id).toBe("roast");
+    const state: any = await call("fun_get_state");
+    expect(state.configs["roast"]).toMatchObject({ minutes: 7 });
+    expect(state.enabled).toContain("roast");
+  });
+});
+
+describe("v1.1 Task 8 pack diffing", () => {
+  it("diff_pack returns the PackDiff shape for a known bundle", async () => {
+    const bundles = await call<any[]>("marketplace_list_bundles");
+    expect(bundles.length).toBeGreaterThan(0);
+    const d: any = await call("diff_pack", { bundle_id: bundles[0].id });
+    expect(d.bundle_id).toBe(bundles[0].id);
+    expect(Array.isArray(d.differs)).toBe(true);
+    expect(Array.isArray(d.only_current)).toBe(true);
+    expect(Array.isArray(d.only_pack)).toBe(true);
+  });
+
+  it("diff_pack rejects an unknown bundle with a NotFound error", async () => {
+    await expect(
+      call("diff_pack", { bundle_id: "no-such-pack-xyz" }),
+    ).rejects.toMatchObject({ kind: "NotFound" });
+    const { errorCopy } = await import("./api");
+    expect(errorCopy({ kind: "NotFound", message: "Pack not found: no-such-pack-xyz" })).toMatch(
+      /may have been removed/,
+    );
   });
 });

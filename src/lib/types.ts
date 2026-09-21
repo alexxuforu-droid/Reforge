@@ -1020,3 +1020,40 @@ export interface AppErrorShape {
   kind: AppErrorKind;
   message: string;
 }
+
+// ---- v1.1 Task 8: product bets batch 1 (mirrors Rust applooks.rs /
+// maintenance.rs snake_case so the Tauri + mock payloads line up) ----
+
+/** Rust `AutopilotReport` — dry-run sweep result, nothing deleted. */
+export interface AutopilotReport {
+  cleaned_mb: number;
+  dupes_removed: number;
+  report_id: string;
+}
+
+/** Rust `LookSchedule` — "apply look Y for app X on cron Z". */
+export interface LookSchedule {
+  app: string;
+  look_id: string;
+  cron: string;
+}
+
+// ---- Widget gallery share (v1.1 bet) ----
+
+/** Shareable widget snapshot: config echo + synthetic 20-char share id. */
+export interface WidgetShare {
+  share_id: string;
+  widget_id: string;
+  config: Record<string, unknown>;
+}
+
+// ---- v1.1 Task 8: pack diffing (mirrors Rust pack-diff bet) ----
+
+/** Compare result: what differs vs current, what exists only in the
+ *  current look, and what exists only in the pack. */
+export interface PackDiff {
+  bundle_id: string;
+  differs: string[];
+  only_current: string[];
+  only_pack: string[];
+}

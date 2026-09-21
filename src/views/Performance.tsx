@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useI18n } from "../i18n";
 import { call, fmt, swallow } from "../lib/api";
 import { useLoad } from "../lib/useLoad";
 import type { BatteryHealth, PerfRecord, PerfSnapshot } from "../lib/types";
@@ -9,6 +10,7 @@ import { IconCpu, IconBattery, IconHardDrive, IconGauge } from "../components/ic
 const MAX_POINTS = 90;
 
 export default function Performance() {
+  const { t } = useI18n();
   const [cpu, setCpu] = useState<number[]>([]);
   const [ram, setRam] = useState<number[]>([]);
   const [snap, setSnap] = useState<PerfSnapshot | null>(null);
@@ -70,7 +72,7 @@ export default function Performance() {
   return (
     <div className="space-y-4">
       <header className="page-head">
-        <h1 className="page-title">Performance</h1>
+        <h1 className="page-title">{t("performance.title")}</h1>
         <p className="page-subtitle">
           Live, every 1.2s · uptime {snap ? fmtUptime(snap.uptime_secs) : "…"}
           {snap?.battery && !snap.battery.on_ac && ` · battery ${snap.battery.percent}%`}
@@ -85,28 +87,28 @@ export default function Performance() {
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <StatCard
-          label="CPU load"
+          label={t("performance.cpuLabel")}
           value={snap ? `${snap.cpu_usage_pct.toFixed(1)}%` : "…"}
           accent={cpuColor}
           sub={`${snap?.process_count ?? 0} processes`}
           icon={<IconCpu size={14} />}
         />
         <StatCard
-          label="RAM free"
+          label={t("performance.ramLabel")}
           value={snap ? `${snap.ram_free_pct.toFixed(0)}%` : "…"}
           accent={ramColor}
           sub={snap ? `${fmt(snap.ram_total - snap.ram_used)} free of ${fmt(snap.ram_total)}` : ""}
           icon={<IconHardDrive size={14} />}
         />
         <StatCard
-          label="Battery"
+          label={t("performance.batteryLabel")}
           value={snap?.battery ? `${snap.battery.percent}%` : "No battery"}
           accent="var(--status-success)"
           sub={snap?.battery ? (snap.battery.on_ac ? "on AC" : snap.battery.charging ? "charging" : "on battery") : "desktop PC"}
           icon={<IconBattery size={14} />}
         />
         <StatCard
-          label="Booted"
+          label={t("performance.bootedLabel")}
           value={snap ? fmtUptime(snap.uptime_secs) : "…"}
           sub="since last restart"
           icon={<IconGauge size={14} />}
@@ -114,7 +116,7 @@ export default function Performance() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Section title="CPU usage" subtitle="Last 90 samples">
+        <Section title={t("performance.cpuSection")} subtitle={t("performance.cpuSectionSub")}>
           <div className="mb-1 flex items-end justify-between">
             <span className="text-3xl font-bold" style={{ color: cpuColor }}>
               {snap ? `${snap.cpu_usage_pct.toFixed(1)}%` : "…"}
@@ -134,7 +136,7 @@ export default function Performance() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Section title="Disks" subtitle="Free space">
+        <Section title={t("performance.disksTitle")} subtitle={t("performance.disksSubtitle")}>
           <div className="space-y-3">
             {snap?.disks.map((d) => (
               <div key={d.mount}>
@@ -182,7 +184,7 @@ export default function Performance() {
       </div>
 
       <Section
-        title="Resource hogs leaderboard"
+        title={t("performance.leaderboardTitle")}
         subtitle="Every app ranked, not just the top one"
         actions={
           <div className="segment">

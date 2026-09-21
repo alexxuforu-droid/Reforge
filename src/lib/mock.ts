@@ -110,6 +110,12 @@ async function mockCallInner<T>(cmd: string, args: Record<string, unknown> = {})
       return handleSafe(cmd, s, args, mockCall) as Promise<T>;
     case "run_maintenance":
       return handleHistory(cmd, s, args, mockCall) as Promise<T>;
+    case "run_autopilot":
+      return handleHistory(cmd, s, args, mockCall) as Promise<T>;
+    case "schedule_look":
+      return handleHistory(cmd, s, args, mockCall) as Promise<T>;
+    case "diff_pack":
+      return handleHistory(cmd, s, args, mockCall) as Promise<T>;
     case "list_reports":
       return handleHistory(cmd, s, args, mockCall) as Promise<T>;
     case "archive_report":
@@ -117,6 +123,10 @@ async function mockCallInner<T>(cmd: string, args: Record<string, unknown> = {})
     case "export_profile":
       return handleHistory(cmd, s, args, mockCall) as Promise<T>;
     case "import_profile":
+      return handleHistory(cmd, s, args, mockCall) as Promise<T>;
+    case "export_widget_share":
+      return handleHistory(cmd, s, args, mockCall) as Promise<T>;
+    case "import_widget_share":
       return handleHistory(cmd, s, args, mockCall) as Promise<T>;
     case "revert_entry":
       return handleHistory(cmd, s, args, mockCall) as Promise<T>;

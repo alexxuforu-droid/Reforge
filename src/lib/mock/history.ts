@@ -249,6 +249,115 @@ export async function handle<T>(cmd: string, s: Store, args: Record<string, unkn
     }
     case "get_battery_health":
       return { available: true, design_mwh: 48000, full_mwh: 43100, health_pct: 90, cycle_count: 312 } as T;
+    // v1.1 Task 8 — maintenance autopilot parity with maintenance.rs:
+    // synthetic before/after report + undo entry BEFORE the persisted
+    // report row (mirrors the Rust undo-then-persist order). The sweep is
+    // dry-run — nothing is deleted.
+    case "run_autopilot": {
+      const cleaned_mb = 800 + Math.floor(Math.random() * 900);
+      const dupes_removed = 1 + Math.floor(Math.random() * 4);
+      const report_id = uid();
+      pushUndo(
+        "autopilot_report",
+        `Autopilot report ${report_id}: ${cleaned_mb} MB swept, ${dupes_removed} duplicate groups.`,
+        false,
+        { report_id, cleaned_mb, dupes_removed },
+      );
+      s.reports.unshift({
+        ts: Date.now(),
+        junk_bytes: cleaned_mb * 1024 * 1024,
+        junk_items: 8,
+        duplicate_bytes: 0,
+        duplicate_files: dupes_removed,
+        startup_heavy: 0,
+        storage_top: [],
+        notes: [`Autopilot swept ~${cleaned_mb} MB across 8 areas and ${dupes_removed} duplicate groups (dry-run — nothing deleted).`],
+      });
+      return { cleaned_mb, dupes_removed, report_id } as T;
+    }
+    // v1.1 Task 8 — look rotator parity with applooks.rs schedule_look:
+    // same validation, same Invalid-shaped rejections (object with kind +
+    // message, NOT a plain Error, so errorCopy() branches on kind). Tauri
+    // passes the struct as { sched }; flat args are accepted too.
+    case "schedule_look": {
+      const raw = (args.sched ?? args) as { app?: unknown; look_id?: unknown; cron?: unknown };
+      const app = String(raw.app ?? "");
+      const look_id = String(raw.look_id ?? "");
+      const cron = String(raw.cron ?? "");
+      const invalid = (message: string): never => {
+        throw { kind: "Invalid", message };
+      };
+      if (!app.trim()) invalid("App must not be empty.");
+      if (!look_id.trim()) invalid("Look id must not be empty.");
+      if (!cron.trim()) invalid("Cron must not be empty.");
+      if ([...cron].length > 128) invalid("Cron must be <= 128 chars.");
+      for (const field of [app, look_id, cron]) {
+        if (/[\u0000-\u001F\u007F]/.test(field)) invalid("Schedule fields must not contain control chars.");
+      }
+      pushUndo("look_schedule", `Scheduled look ${look_id} for ${app}.`, false, { app, look_id, cron });
+      return null as T;
+    }
+    // v1.1 Task 8 — pack diffing: compare an installed pack's manifest
+    // against the current look. Set arithmetic on component types: shared
+    // types may differ in value (differs), pack-only types are only_pack,
+    // current-only types are only_current. Unknown ids reject with a
+    // NotFound-shaped error (object with kind + message, NOT a plain
+    // Error, so errorCopy() branches on kind).
+    case "diff_pack": {
+      const bundle_id = String(args.bundle_id ?? "");
+      const m = s.manifests.get(bundle_id);
+      if (!m) {
+        throw { kind: "NotFound", message: `Pack not found: ${bundle_id || "(empty id)"}` };
+      }
+      const packTypes = m.components.map((c) => c.type);
+      const currentTypes = ["accent", "theme_mode", "wallpaper", "taskbar"];
+      const differs = [...new Set(packTypes)].filter((t) => currentTypes.includes(t));
+      const only_pack = [...new Set(packTypes)].filter((t) => !currentTypes.includes(t));
+      const only_current = currentTypes.filter((t) => !packTypes.includes(t));
+      return { bundle_id, differs, only_current, only_pack } as T;
+    }
+    // v1.1 widget gallery share — export/import a widget config snapshot.
+    // Export echoes the stored fun config; import validates the shape
+    // (Invalid-shaped rejections so errorCopy() branches on kind) and merges
+    // it into the mock fun store (config + enabled).
+    case "export_widget_share": {
+      const widget_id = String(args.widget_id ?? "");
+      const invalid = (message: string): never => {
+        throw { kind: "Invalid", message };
+      };
+      if (!widget_id.trim()) invalid("Widget id must not be empty.");
+      const stored = s.fun.configs[widget_id] as unknown;
+      if (stored === undefined) {
+        invalid(`No stored config for widget ${widget_id}.`);
+      }
+      if (typeof stored !== "object" || stored === null || Array.isArray(stored)) {
+        invalid("Widget config must be an object.");
+      }
+      const alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+      let share_id = "";
+      for (let i = 0; i < 20; i++) share_id += alphabet[Math.floor(Math.random() * alphabet.length)];
+      return { share_id, widget_id, config: { ...(stored as Record<string, unknown>) } } as T;
+    }
+    case "import_widget_share": {
+      const raw = (args.share ?? args) as { share_id?: unknown; widget_id?: unknown; config?: unknown };
+      const invalid = (message: string): never => {
+        throw { kind: "Invalid", message };
+      };
+      const widget_id = String(raw.widget_id ?? "");
+      if (!widget_id.trim()) invalid("Shared widget must include a widget_id.");
+      if (typeof raw.config !== "object" || raw.config === null || Array.isArray(raw.config)) {
+        invalid("Shared widget must include a config object.");
+      }
+      const share_id = String(raw.share_id ?? "");
+      if (share_id && !/^[A-Za-z0-9]{20}$/.test(share_id)) {
+        invalid("Share id must be 20 alphanumeric characters.");
+      }
+      const config = { ...(raw.config as Record<string, unknown>) };
+      s.fun.configs[widget_id] = { ...(s.fun.configs[widget_id] ?? {}), ...config };
+      if (!s.fun.enabled.includes(widget_id)) s.fun.enabled.push(widget_id);
+      pushUndo("widget_layout", `Imported shared widget ${widget_id}.`, false, { widget_id, share_id });
+      return { share_id, widget_id, config } as T;
+    }
     default:
       return undefined;
   }

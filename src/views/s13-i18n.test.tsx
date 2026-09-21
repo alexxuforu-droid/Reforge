@@ -30,11 +30,10 @@ describe("S13.5 i18n catalogs", () => {
   });
 
   it("de.json has full key parity with en.json (third locale)", () => {
-    // TODO(i18n-slice-2): translate security.title to German. It is the
-    // deliberate en-fallback probe: missing here so t() must return the
-    // English value (see "security.title falls back" test below).
+    // Slice K: security.title is now translated to German — the intentional
+    // fallback probe from slice 1 is removed, so parity is full.
     const missing = Object.keys(en).filter((k) => !(k in de));
-    expect(missing).toEqual(["security.title"]);
+    expect(missing).toEqual([]);
   });
 
   it("es values are real translations (only proper nouns / code terms stay English)", () => {
@@ -95,7 +94,7 @@ describe("S13.5 i18n catalogs", () => {
     expect(getByTestId("nope").textContent).toBe("no.such.key");
   });
 
-  it('t("security.title") resolves in en and falls back to English in de when the key is missing', async () => {
+  it('t("security.title") resolves in en and in de with no fallback', async () => {
     const i18n = await import("../i18n");
     const { render, cleanup } = await import("@testing-library/react");
     function Probe() {
@@ -112,15 +111,34 @@ describe("S13.5 i18n catalogs", () => {
     expect(enRender.getByTestId("sec-title").textContent).toBe(en["security.title"]);
     enRender.unmount();
     cleanup();
-    // de: key deliberately missing (see parity test TODO) → English fallback
+    // de: key now translated (slice K) → German value, no English fallback
     localStorage.setItem("reforge-lang", "de");
     const deRender = render(
       <i18n.I18nProvider>
         <Probe />
       </i18n.I18nProvider>,
     );
-    expect(deRender.getByTestId("sec-title").textContent).toBe(en["security.title"]);
+    expect(deRender.getByTestId("sec-title").textContent).toBe(de["security.title"]);
+    expect(deRender.getByTestId("sec-title").textContent).not.toBe(en["security.title"]);
     deRender.unmount();
+    cleanup();
+  });
+
+  it('t("marketplace.title") resolves in es', async () => {
+    const i18n = await import("../i18n");
+    const { render, cleanup } = await import("@testing-library/react");
+    function Probe() {
+      const { t } = i18n.useI18n();
+      return <span data-testid="mp-title">{t("marketplace.title")}</span>;
+    }
+    localStorage.setItem("reforge-lang", "es");
+    const esRender = render(
+      <i18n.I18nProvider>
+        <Probe />
+      </i18n.I18nProvider>,
+    );
+    expect(esRender.getByTestId("mp-title").textContent).toBe(es["marketplace.title"]);
+    esRender.unmount();
     cleanup();
   });
 });
