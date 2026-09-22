@@ -8,6 +8,8 @@ use std::path::PathBuf;
 use tauri::{Emitter, State};
 use uuid::Uuid;
 use walkdir::WalkDir;
+
+use rayon::prelude::*;
 use windows::core::PCWSTR;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::UI::Shell::{SHFileOperationW, FOF_ALLOWUNDO, FO_DELETE, SHFILEOPSTRUCTW};
@@ -733,62 +735,69 @@ pub struct UnusedFile {
 /// and whose size is at least `min_mb`. Both knobs honored; defaults come from
 /// the S14.4 storage config (180 days / 10 MB) so it only surfaces things
 /// worth deleting.
+///
+/// Wave 3 perf lane: sequential walk collects paths, then the
+/// metadata/age/category fan-out runs on the rayon pool. `emit` must be a
+/// plain `Fn` (shared across threads); the ~20/s throttle is shared.
 pub fn scan_unused_inner(
     dir: &str,
     older_than_days: u64,
     min_mb: u64,
-    mut emit: impl FnMut(u64),
+    emit: impl Fn(u64) + Send + Sync,
 ) -> Result<Vec<UnusedFile>, AppError> {
+    use std::sync::atomic::{AtomicU64, Ordering};
     let root = PathBuf::from(dir);
     if !root.is_dir() {
         return Err(AppError::Command(format!("Not a folder: {}", dir)));
     }
     let min_bytes = min_mb.max(1).saturating_mul(1024 * 1024);
     let now = now_millis();
-    let mut out = Vec::new();
-    let mut scanned = 0u64;
-    let mut last_emit = std::time::Instant::now();
-    for entry in WalkDir::new(&root)
+    let paths: Vec<PathBuf> = WalkDir::new(&root)
         .max_depth(8)
         .into_iter()
         .filter_map(|e| e.ok())
-    {
-        if !entry.file_type().is_file() {
-            continue;
-        }
-        let p = entry.path();
-        if let Ok(m) = p.metadata() {
-            if m.len() >= min_bytes {
-                let modified = m
-                    .modified()
-                    .ok()
-                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                    .map(|d| d.as_secs())
-                    .unwrap_or(0);
-                if let Some(days_old) =
-                    unused_age(modified.saturating_mul(1000), now, older_than_days)
-                {
-                    out.push(UnusedFile {
-                        path: p.to_string_lossy().to_string(),
-                        size: m.len(),
-                        modified,
-                        days_old,
-                        category: crate::organize::category_for(
-                            &p.file_name().unwrap_or_default().to_string_lossy(),
-                        )
-                        .unwrap_or("Other")
-                        .to_string(),
-                    });
+        .filter(|e| e.file_type().is_file())
+        .map(|e| e.path().to_path_buf())
+        .collect();
+    let scanned = AtomicU64::new(0);
+    let last_emit = std::sync::Mutex::new(std::time::Instant::now());
+    let mut out: Vec<UnusedFile> = paths
+        .par_iter()
+        .filter_map(|p| {
+            let n = scanned.fetch_add(1, Ordering::Relaxed) + 1;
+            if n.is_multiple_of(200) {
+                if let Ok(mut guard) = last_emit.try_lock() {
+                    if guard.elapsed().as_millis() >= 50 {
+                        *guard = std::time::Instant::now();
+                        emit(n);
+                    }
                 }
             }
-        }
-        scanned += 1;
-        if scanned.is_multiple_of(200) && last_emit.elapsed().as_millis() >= 50 {
-            last_emit = std::time::Instant::now();
-            emit(scanned);
-        }
-    }
-    emit(scanned);
+            let m = p.metadata().ok()?;
+            if m.len() < min_bytes {
+                return None;
+            }
+            let modified = m
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            let days_old = unused_age(modified.saturating_mul(1000), now, older_than_days)?;
+            Some(UnusedFile {
+                path: p.to_string_lossy().to_string(),
+                size: m.len(),
+                modified,
+                days_old,
+                category: crate::organize::category_for(
+                    &p.file_name().unwrap_or_default().to_string_lossy(),
+                )
+                .unwrap_or("Other")
+                .to_string(),
+            })
+        })
+        .collect();
+    emit(scanned.load(Ordering::Relaxed));
     out.sort_by_key(|x| std::cmp::Reverse(x.size));
     out.truncate(200);
     Ok(out)

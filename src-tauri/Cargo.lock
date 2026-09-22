@@ -2792,6 +2792,7 @@ dependencies = [
  "image",
  "lazy_static",
  "rand",
+ "rayon",
  "serde",
  "serde_json",
  "sha2",
