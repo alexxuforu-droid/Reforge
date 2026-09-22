@@ -9,7 +9,7 @@ Built with **Tauri 2 + Rust + React + TypeScript + Tailwind**.
 > spec and `docs/ROADMAP.md` for the plan to v1.0.
 
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL-3.0-blue.svg)](LICENSE)
-[![GitHub Release](https://img.shields.io/github/v/release/vasilescualex07-droid/Reforge)](https://github.com/vasilescualex07-droid/Reforge/releases)
+[![GitHub Release](https://img.shields.io/github/v/release/alexxuforu-droid/Reforge)](https://github.com/alexxuforu-droid/Reforge/releases)
 
 > **Status (2026-09-18):** v1.0.0 — **17 sections, 255 backend commands**,
 > 144 Rust tests, 10 browser journeys green, three locales (en/es/de).
@@ -21,7 +21,7 @@ Built with **Tauri 2 + Rust + React + TypeScript + Tailwind**.
 ## Download & install
 
 Grab the latest installer (e.g. `Reforge_1.0.0_x64-setup.exe`) from the
-[Releases page](https://github.com/vasilescualex07-droid/Reforge/releases) — a
+[Releases page](https://github.com/alexxuforu-droid/Reforge/releases) — a
 per-user install, no admin rights needed. In-app, Settings → "Check for updates"
 polls the same channel and installs newer versions silently (sha256-verified,
 staged, then swapped by the NSIS installer).

@@ -17,7 +17,7 @@
 # The updater manifest ({"version","url","sha256","notes"}) is generated and
 # attached to the draft release as `latest.json`. The app's
 # UpdateConfig.manifest_url points at
-# https://github.com/vasilescualex07-droid/Reforge/releases/latest/download/latest.json
+# https://github.com/alexxuforu-droid/Reforge/releases/latest/download/latest.json
 # (tag-independent, so it keeps working across releases).
 name: release
 
@@ -105,11 +105,16 @@ jobs:
         id: manifest
         shell: bash
         run: |
-          EXE=src-tauri/target/release/reforge.exe
+          # The manifest url below points at the NSIS -setup.exe bundle, so the
+          # sha256 MUST be computed over that same bundle (not the raw
+          # reforge.exe) — updater.rs download_update downloads url verbatim
+          # and fails verification on any mismatch.
+          SETUP="$(ls src-tauri/target/release/bundle/nsis/*-setup.exe | head -n 1)"
+          test -n "$SETUP" && test -f "$SETUP"
           # Version comes from tauri.conf.json (single source of truth) — the
           # exe has no --version CLI, so never try to read it from the binary.
           VERSION="$(python -c 'import json; print(json.load(open("src-tauri/tauri.conf.json"))["version"])')"
-          SHA256="$(sha256sum "$EXE" | awk '{print $1}')"
+          SHA256="$(sha256sum "$SETUP" | awk '{print $1}')"
           # Written to the workspace root, NOT /tmp: the release action (Node)
           # resolves /tmp differently than bash on Windows, which silently
           # dropped the manifest from the release.
