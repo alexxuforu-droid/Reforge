@@ -322,6 +322,15 @@ async function mockCallInner<T>(cmd: string, args: Record<string, unknown> = {})
       return handleLook(cmd, s, args) as Promise<T>;
     case "delete_display_profile":
       return handleLook(cmd, s, args) as Promise<T>;
+    // Wave 4 platform lane — mock parity lives in history.ts (look.ts/store.ts
+    // are out of lane scope): topology echo + per-monitor video map with the
+    // same validation + video_wallpaper undo shape as the Rust backend.
+    case "get_monitor_topology":
+      return handleHistory(cmd, s, args, mockCall) as Promise<T>;
+    case "get_video_wallpapers_per_monitor":
+      return handleHistory(cmd, s, args, mockCall) as Promise<T>;
+    case "set_video_wallpaper_for_monitor":
+      return handleHistory(cmd, s, args, mockCall) as Promise<T>;
     case "get_onboarding_state":
       return handleHistory(cmd, s, args, mockCall) as Promise<T>;
     case "set_onboarding_state":

@@ -417,6 +417,8 @@ pub fn run() {
             wallpaper_video::set_video_wallpaper,
             wallpaper_video::stop_video_wallpaper,
             wallpaper_video::set_video_paused,
+            wallpaper_video::get_video_wallpapers_per_monitor,
+            wallpaper_video::set_video_wallpaper_for_monitor,
             // widgets
             widgets::list_widgets,
             widgets::create_widget,
@@ -578,6 +580,7 @@ pub fn run() {
             displays::save_display_profile,
             displays::apply_display_profile,
             displays::delete_display_profile,
+            displays::get_monitor_topology,
             // automation
             automation::get_automation_config,
             automation::set_automation_config,

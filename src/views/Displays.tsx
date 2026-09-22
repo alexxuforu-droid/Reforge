@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { errorCopy, call } from "../lib/api";
 import { useLoad } from "../lib/useLoad";
-import type { DisplayMonitorInfo, DisplayProfile } from "../lib/types";
-import { InlineAlert, Section, toast } from "../components/ui";
+import type { DisplayMonitorInfo, DisplayProfile, MonitorTopology } from "../lib/types";
+import { InlineAlert, Section, StatCard, toast } from "../components/ui";
 import { IconRefresh, IconMonitor, IconPlus, IconTrash } from "../components/icons";
 
 export default function Displays() {
@@ -10,11 +10,13 @@ export default function Displays() {
   // dead blank), one toast per command per session, and a refresh() handle.
   const { data: monitors, error: monitorError, refresh: refreshMonitors } = useLoad<DisplayMonitorInfo[]>("get_display_info");
   const { data: profiles, error: profilesError, refresh: refreshProfiles } = useLoad<DisplayProfile[]>("list_display_profiles");
+  const { data: topology, error: topologyError, refresh: refreshTopology } = useLoad<MonitorTopology[]>("get_monitor_topology");
   const [name, setName] = useState("");
 
   const refresh = () => {
     refreshMonitors();
     refreshProfiles();
+    refreshTopology();
   };
 
   const saveProfile = () => {
@@ -121,6 +123,27 @@ export default function Displays() {
           </div>
         ) : (
           <div className="empty-state">No displays detected.</div>
+        )}
+      </Section>
+
+      {/* Monitor Topology (Wave 4 platform lane) */}
+      <Section title="Monitor topology" subtitle="Per-monitor resolution, DPI and refresh rate">
+        {topologyError ? (
+          <InlineAlert>{topologyError}</InlineAlert>
+        ) : !topology || topology.length === 0 ? (
+          <div className="empty-state">No topology data.</div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {topology.map((t) => (
+              <StatCard
+                key={t.id}
+                label={t.id}
+                value={t.resolution}
+                sub={`${t.dpi} DPI · ${t.refresh_hz} Hz`}
+                icon={<IconMonitor size={14} />}
+              />
+            ))}
+          </div>
         )}
       </Section>
 

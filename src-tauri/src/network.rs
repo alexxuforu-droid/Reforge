@@ -302,11 +302,13 @@ pub fn list_vpn_connections() -> Vec<VpnConnection> {
         .collect()
 }
 
-// raw (no undo logging) — used by revert
+// raw (no undo logging) — used by revert. Re-validates: undo history data
+// reaches here without passing through the Tauri command boundary.
 pub fn vpn_connect_raw(name: &str) -> Result<String, AppError> {
+    let name = validate_profile_name(name)?;
     tracing::info!(target: "shell", "rasdial connect: {name}");
     let out = cmd("rasdial")
-        .arg(name)
+        .arg(&name)
         .output()
         .map_err(|e| AppError::Command(e.to_string()))?;
     if out.status.success() {
@@ -326,9 +328,10 @@ pub fn vpn_connect_raw(name: &str) -> Result<String, AppError> {
 }
 
 pub fn vpn_disconnect_raw(name: &str) -> Result<String, AppError> {
+    let name = validate_profile_name(name)?;
     tracing::info!(target: "shell", "rasdial disconnect: {name}");
     let out = cmd("rasdial")
-        .args([name, "/d"])
+        .args([name.as_str(), "/d"])
         .output()
         .map_err(|e| AppError::Command(e.to_string()))?;
     if out.status.success() {

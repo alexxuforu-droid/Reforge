@@ -5,6 +5,7 @@ use crate::undo;
 use crate::wallpaper;
 use crate::wallpaper_engine::{EngineState, VideoWallpaper};
 use serde_json::json;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use tauri::{Manager, State, WebviewUrl, WebviewWindowBuilder};
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -245,6 +246,74 @@ fn close_video_window(app: &tauri::AppHandle) {
 }
 
 // ---------------------------------------------------------------------------
+// Per-monitor video assignments (Wave 4 platform lane)
+// ---------------------------------------------------------------------------
+// Additive to the single-monitor `EngineState.media`: existing callers keep
+// working unchanged. Unassigned monitors fall back to the default monitor
+// key ("0"), which preserves the legacy single-monitor behavior.
+
+/// Per-monitor video assignments: monitor id → video file path.
+pub type PerMonitorVideoMap = HashMap<String, String>;
+
+/// Windows MAX_PATH — video paths longer than this are rejected.
+pub const MAX_VIDEO_PATH_LEN: usize = 260;
+/// Default single-monitor key: keeps single-monitor behavior as the default.
+pub const DEFAULT_VIDEO_MONITOR: &str = "0";
+
+/// Validate a per-monitor video path: non-empty, within MAX_PATH.
+pub fn validate_video_path(path: &str) -> Result<(), AppError> {
+    if path.trim().is_empty() {
+        return Err(AppError::Invalid("Video path must not be empty.".into()));
+    }
+    if path.len() > MAX_VIDEO_PATH_LEN {
+        return Err(AppError::Invalid(format!(
+            "Video path must be <= {MAX_VIDEO_PATH_LEN} chars (got {}).",
+            path.len()
+        )));
+    }
+    Ok(())
+}
+
+/// Normalize a monitor id: None/empty means the default single monitor.
+pub fn normalize_video_monitor(monitor: &Option<String>) -> String {
+    match monitor {
+        Some(m) if !m.trim().is_empty() => m.clone(),
+        _ => DEFAULT_VIDEO_MONITOR.into(),
+    }
+}
+
+/// Pure validated insert — testable without disk or windowing.
+pub fn set_monitor_video_inner(
+    map: &mut PerMonitorVideoMap,
+    monitor_id: &str,
+    path: &str,
+) -> Result<(), AppError> {
+    if monitor_id.trim().is_empty() {
+        return Err(AppError::Invalid("Monitor id must not be empty.".into()));
+    }
+    validate_video_path(path)?;
+    map.insert(monitor_id.to_string(), path.to_string());
+    Ok(())
+}
+
+/// Pure lookup: the video path assigned to `monitor_id`, if any.
+pub fn get_monitor_video_inner(map: &PerMonitorVideoMap, monitor_id: &str) -> Option<String> {
+    map.get(monitor_id).cloned()
+}
+
+fn per_monitor_path(state: &AppState) -> PathBuf {
+    state.data_dir.join("video_wallpapers_per_monitor.json")
+}
+
+fn load_per_monitor(state: &AppState) -> PerMonitorVideoMap {
+    load_json(&per_monitor_path(state), PerMonitorVideoMap::new())
+}
+
+fn save_per_monitor(state: &AppState, m: &PerMonitorVideoMap) -> Result<(), AppError> {
+    save_json(&per_monitor_path(state), m)
+}
+
+// ---------------------------------------------------------------------------
 // Tauri commands
 // ---------------------------------------------------------------------------
 
@@ -428,6 +497,36 @@ pub fn set_video_paused(app: tauri::AppHandle, paused: bool) -> Result<(), AppEr
     Ok(())
 }
 
+#[tauri::command]
+pub fn get_video_wallpapers_per_monitor(state: State<'_, AppState>) -> PerMonitorVideoMap {
+    load_per_monitor(&state)
+}
+
+#[tauri::command]
+pub fn set_video_wallpaper_for_monitor(
+    state: State<'_, AppState>,
+    monitor_id: String,
+    source: String,
+) -> Result<PerMonitorVideoMap, AppError> {
+    if monitor_id.trim().is_empty() {
+        return Err(AppError::Invalid("Monitor id must not be empty.".into()));
+    }
+    validate_video_path(&source)?;
+    // Undo entry BEFORE the change so revert restores the prior map.
+    let before = load_per_monitor(&state);
+    undo::log_entry(
+        &state,
+        "video_wallpaper",
+        format!("Video wallpaper [{monitor_id}] → {source}"),
+        json!({ "monitor_id": monitor_id, "path": source, "before": before }),
+        true,
+    )?;
+    let mut map = before;
+    set_monitor_video_inner(&mut map, &monitor_id, &source)?;
+    save_per_monitor(&state, &map)?;
+    Ok(map)
+}
+
 #[cfg(test)]
 mod m1_tests {
     use super::*;
@@ -492,5 +591,78 @@ mod m1_tests {
             Some((1, 1920, 0, 1920, 1080))
         );
         assert_eq!(resolve_placement(&after, &None), None);
+    }
+}
+
+#[cfg(test)]
+mod per_monitor_tests {
+    use super::*;
+
+    #[test]
+    fn empty_path_is_rejected() {
+        assert!(validate_video_path("").is_err());
+        assert!(validate_video_path("   ").is_err());
+    }
+
+    #[test]
+    fn overlong_path_is_rejected_at_boundary() {
+        let ok = "a".repeat(MAX_VIDEO_PATH_LEN);
+        let too_long = "a".repeat(MAX_VIDEO_PATH_LEN + 1);
+        assert!(validate_video_path(&ok).is_ok());
+        assert!(validate_video_path(&too_long).is_err());
+    }
+
+    #[test]
+    fn unpinned_monitor_normalizes_to_default() {
+        assert_eq!(normalize_video_monitor(&None), DEFAULT_VIDEO_MONITOR);
+        assert_eq!(
+            normalize_video_monitor(&Some("".into())),
+            DEFAULT_VIDEO_MONITOR
+        );
+        assert_eq!(
+            normalize_video_monitor(&Some("\\\\.\\DISPLAY2".into())),
+            "\\\\.\\DISPLAY2"
+        );
+    }
+
+    #[test]
+    fn set_and_get_roundtrip_per_monitor() {
+        let mut map = PerMonitorVideoMap::new();
+        set_monitor_video_inner(&mut map, "\\\\.\\DISPLAY1", "C:\\v\\a.mp4").unwrap();
+        set_monitor_video_inner(&mut map, "\\\\.\\DISPLAY2", "C:\\v\\b.mp4").unwrap();
+        assert_eq!(
+            get_monitor_video_inner(&map, "\\\\.\\DISPLAY1").as_deref(),
+            Some("C:\\v\\a.mp4")
+        );
+        assert_eq!(
+            get_monitor_video_inner(&map, "\\\\.\\DISPLAY2").as_deref(),
+            Some("C:\\v\\b.mp4")
+        );
+        assert!(get_monitor_video_inner(&map, "\\\\.\\DISPLAY9").is_none());
+    }
+
+    #[test]
+    fn set_rejects_empty_monitor_and_bad_paths() {
+        let mut map = PerMonitorVideoMap::new();
+        assert!(set_monitor_video_inner(&mut map, "", "C:\\v\\a.mp4").is_err());
+        assert!(set_monitor_video_inner(&mut map, "\\\\.\\DISPLAY1", "").is_err());
+        assert!(set_monitor_video_inner(
+            &mut map,
+            "\\\\.\\DISPLAY1",
+            &"a".repeat(MAX_VIDEO_PATH_LEN + 1),
+        )
+        .is_err());
+        assert!(map.is_empty());
+    }
+
+    #[test]
+    fn overwrite_keeps_other_monitors() {
+        let mut map = PerMonitorVideoMap::new();
+        set_monitor_video_inner(&mut map, "\\\\.\\DISPLAY1", "C:\\v\\a.mp4").unwrap();
+        set_monitor_video_inner(&mut map, "\\\\.\\DISPLAY1", "C:\\v\\c.mp4").unwrap();
+        assert_eq!(
+            get_monitor_video_inner(&map, "\\\\.\\DISPLAY1").as_deref(),
+            Some("C:\\v\\c.mp4")
+        );
     }
 }

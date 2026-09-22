@@ -12,6 +12,12 @@ import type {
 import type { Store, MockCall } from "./store";
 import { pushUndo, uid, clamp, perf } from "./store";
 
+// Wave 4 platform lane: per-monitor video assignments (monitor id → path).
+// Module-level (not the shared store — out of lane scope). Unassigned
+// monitors fall back to the default "0" key, mirroring the Rust backend.
+const MAX_VIDEO_PATH_LEN = 260;
+const perMonitorVideo: Record<string, string> = {};
+
 export async function handle<T>(cmd: string, s: Store, args: Record<string, unknown>, call: MockCall): Promise<T | undefined> {
   switch (cmd) {
     case "get_undo_log":
@@ -357,6 +363,37 @@ export async function handle<T>(cmd: string, s: Store, args: Record<string, unkn
       if (!s.fun.enabled.includes(widget_id)) s.fun.enabled.push(widget_id);
       pushUndo("widget_layout", `Imported shared widget ${widget_id}.`, false, { widget_id, share_id });
       return { share_id, widget_id, config } as T;
+    }
+    // ---- Wave 4 platform lane: monitor topology + per-monitor video ----
+    // Mock parity for displays::get_monitor_topology and the per-monitor video
+    // map in wallpaper_video.rs. Module-level map (not the shared store — the
+    // store file is out of lane scope); single-monitor default "0" preserved.
+    case "get_monitor_topology":
+      return [
+        { id: "\\\\.\\DISPLAY1", resolution: "2560x1440", dpi: 144, refresh_hz: 144 },
+        { id: "\\\\.\\DISPLAY2", resolution: "1920x1080", dpi: 96, refresh_hz: 60 },
+      ] as T;
+    case "get_video_wallpapers_per_monitor":
+      return { ...perMonitorVideo } as T;
+    case "set_video_wallpaper_for_monitor": {
+      const invalid = (message: string): never => {
+        throw { kind: "Invalid", message };
+      };
+      const monitor_id = String(args.monitor_id ?? "");
+      const path = String(args.source ?? "");
+      if (!monitor_id.trim()) invalid("Monitor id must not be empty.");
+      if (!path.trim()) invalid("Video path must not be empty.");
+      if ([...path].length > MAX_VIDEO_PATH_LEN) {
+        invalid(`Video path must be <= ${MAX_VIDEO_PATH_LEN} chars (got ${[...path].length}).`);
+      }
+      // Undo entry BEFORE the change so revert restores the prior map.
+      pushUndo("video_wallpaper", `Video wallpaper [${monitor_id}] → ${path}`, true, {
+        monitor_id,
+        path,
+        before: { ...perMonitorVideo },
+      });
+      perMonitorVideo[monitor_id] = path;
+      return { ...perMonitorVideo } as T;
     }
     default:
       return undefined;

@@ -566,6 +566,15 @@ export interface DisplayProfile {
   monitors: { id: string; wallpaper: string }[];
 }
 
+// ---- Wave 4 platform lane: monitor topology (mirrors Rust MonitorTopology) ----
+
+export interface MonitorTopology {
+  id: string;
+  resolution: string;
+  dpi: number;
+  refresh_hz: number;
+}
+
 // ---- Automation / perf / dashboard ----
 
 /** The exact payload `apply_style` accepts — mirrors Rust `StyleApply`. */

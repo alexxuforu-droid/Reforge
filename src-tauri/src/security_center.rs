@@ -111,7 +111,22 @@ fn parse_product_state(state_hex: &str) -> (bool, bool) {
     (enabled, up_to_date)
 }
 
+/// X-9 — the WMI class name is interpolated into a PowerShell string. Only
+/// the three SecurityCenter2 product classes exist; anything else is rejected
+/// so a future caller can't widen this into an injection hole.
+fn validate_wmi_class(class: &str) -> Result<String, AppError> {
+    match class {
+        "AntiVirusProduct" | "FirewallProduct" | "AntiSpywareProduct" => Ok(class.to_string()),
+        _ => Err(AppError::Invalid("Invalid WMI class.".into())),
+    }
+}
+
 fn query_products(wmi_class: &str, kind: &str) -> Vec<RegisteredProduct> {
+    // Fail closed: unknown classes yield no products, never a PS string.
+    let wmi_class = match validate_wmi_class(wmi_class) {
+        Ok(c) => c,
+        Err(_) => return Vec::new(),
+    };
     let result = ps(&[&format!(
         "Get-CimInstance -Namespace root/SecurityCenter2 -ClassName {} | Select-Object displayName,productState,pathToSignedProductExe,instanceGuid | ConvertTo-Json",
         wmi_class
@@ -337,22 +352,24 @@ pub fn security_trigger_scan(
     if SCAN_IN_PROGRESS.load(Ordering::Relaxed) {
         return Err(AppError::Command("A scan is already in progress.".into()));
     }
-    SCAN_IN_PROGRESS.store(true, Ordering::Relaxed);
-    SCAN_PROGRESS.store(0, Ordering::Relaxed);
-
     // E3 shell audit: the custom-scan path is frontend input woven into a
-    // PowerShell string — reject control characters and absurd lengths before
-    // it ever reaches a command line (the single-quote escaping inside the
-    // thread is defense in depth, not the only line).
+    // PowerShell string — validate it before it ever reaches a command line
+    // (the single-quote escaping inside the thread is defense in depth,
+    // not the only line). Validate BEFORE claiming the in-progress flag so a
+    // rejected path can't wedge all future scans behind a stuck flag.
     if scan_type == "custom" {
-        if let Some(p) = path.as_deref() {
-            if p.len() > 260 || p.chars().any(|c| c.is_control()) {
-                return Err(AppError::Invalid(
-                    "Scan path contains invalid characters.".into(),
-                ));
+        match path.as_deref() {
+            Some(p) => {
+                validate_scan_path(p)?;
+            }
+            None => {
+                return Err(AppError::Invalid("Scan path cannot be empty.".into()));
             }
         }
     }
+
+    SCAN_IN_PROGRESS.store(true, Ordering::Relaxed);
+    SCAN_PROGRESS.store(0, Ordering::Relaxed);
 
     let scan_type2 = scan_type.clone();
     let path2 = path.clone();
@@ -366,7 +383,7 @@ pub fn security_trigger_scan(
                 let p = path2.unwrap_or_default();
                 format!(
                     "Start-MpScan -ScanType CustomScan -ScanPath '{}'",
-                    p.replace('\'', "''")
+                    ps_single_quote(&p)
                 )
             }
             _ => "Start-MpScan -ScanType QuickScan".to_string(),
@@ -567,9 +584,16 @@ pub fn security_list_threats() -> Vec<ThreatEntry> {
 /// Defender threat IDs are positive integers. Validating keeps attacker-controlled
 /// input (compromised webview, malicious script) out of the PowerShell command line.
 fn validate_threat_id(threat_id: &str) -> Result<u64, AppError> {
-    threat_id
+    let id = threat_id
         .parse::<u64>()
-        .map_err(|_| AppError::Invalid(format!("Invalid threat ID: {}", threat_id)))
+        .map_err(|_| AppError::Invalid(format!("Invalid threat ID: {}", threat_id)))?;
+    if id == 0 {
+        return Err(AppError::Invalid(format!(
+            "Invalid threat ID: {}",
+            threat_id
+        )));
+    }
+    Ok(id)
 }
 
 #[tauri::command]
@@ -762,14 +786,82 @@ fn validate_exclusion_target(target: &str) -> Result<(), AppError> {
             "Exclusion target cannot be empty.".into(),
         ));
     }
-    let forbidden = ['\u{0}', '\n', '\r', '\t'];
-    if let Some(c) = target.chars().find(|c| forbidden.contains(c)) {
+    if target.chars().count() > 1024 {
+        return Err(AppError::Command("Exclusion target is too long.".into()));
+    }
+    if let Some(c) = target.chars().find(|c| c.is_control()) {
         return Err(AppError::Command(format!(
             "Exclusion target contains a control character that is not allowed: {}",
             c.escape_default()
         )));
     }
     Ok(())
+}
+
+/// X-9 — PowerShell single-quoted string escaping, mirroring `ps_single_quote`
+/// in capability.rs: a literal `'` inside the value would terminate the
+/// quoting and inject script. Doubling is the documented PowerShell escape.
+/// Callers must still validate first; escaping is defense in depth.
+fn ps_single_quote(s: &str) -> String {
+    s.replace('\'', "''")
+}
+
+/// Custom-scan paths are frontend input woven into a PowerShell string.
+/// Bound them before they get near a command line: non-empty, within
+/// MAX_PATH, no control chars. Passed single-quote-escaped, never
+/// shell-concatenated.
+fn validate_scan_path(path: &str) -> Result<String, AppError> {
+    if path.trim().is_empty() {
+        return Err(AppError::Invalid("Scan path cannot be empty.".into()));
+    }
+    if path.chars().count() > 260 {
+        return Err(AppError::Invalid("Scan path is too long.".into()));
+    }
+    if path.chars().any(|c| c.is_control()) {
+        return Err(AppError::Invalid(
+            "Scan path contains invalid characters.".into(),
+        ));
+    }
+    Ok(path.to_string())
+}
+
+/// ASR rule IDs are Defender GUIDs. Bound them before interpolation:
+/// non-empty, sane length, no control chars, GUID charset only
+/// (hex, `-`, braces). Rendered single-quote-escaped, never shell-concatenated.
+fn validate_asr_rule_id(rule_id: &str) -> Result<String, AppError> {
+    let id = rule_id.trim();
+    if id.is_empty() || id.chars().count() > 128 || id.chars().any(|c| c.is_control()) {
+        return Err(AppError::Invalid("Invalid ASR rule ID.".into()));
+    }
+    if !id
+        .chars()
+        .all(|c| c.is_ascii_hexdigit() || c == '-' || c == '{' || c == '}')
+    {
+        return Err(AppError::Invalid("Invalid ASR rule ID.".into()));
+    }
+    Ok(id.to_string())
+}
+
+/// X-9 — the CFA mode comes from the frontend and selects a protection state.
+/// Unknown values fail closed (rejected), never silently map to "disabled".
+fn validate_cfa_mode(mode: &str) -> Result<u32, AppError> {
+    match mode {
+        "enabled" => Ok(1),
+        "audit" => Ok(2),
+        "disabled" => Ok(0),
+        _ => Err(AppError::Invalid("Unknown CFA mode.".into())),
+    }
+}
+
+/// X-9 — the ASR action comes from the frontend. Unknown values fail closed,
+/// never silently disable the rule.
+fn validate_asr_action(action: &str) -> Result<u32, AppError> {
+    match action {
+        "enabled" => Ok(1),
+        "audit" => Ok(2),
+        "disabled" => Ok(0),
+        _ => Err(AppError::Invalid("Unknown ASR action.".into())),
+    }
 }
 
 fn parse_exclusions(cmd_result: &str) -> Vec<Exclusion> {
@@ -829,15 +921,15 @@ pub fn security_manage_exclusions(
             match kind.as_str() {
                 "path" => ps(&[&format!(
                     "Add-MpPreference -ExclusionPath '{}'",
-                    target.replace('\'', "''")
+                    ps_single_quote(&target)
                 )]),
                 "extension" => ps(&[&format!(
                     "Add-MpPreference -ExclusionExtension '{}'",
-                    target.replace('\'', "''")
+                    ps_single_quote(&target)
                 )]),
                 "process" => ps(&[&format!(
                     "Add-MpPreference -ExclusionProcess '{}'",
-                    target.replace('\'', "''")
+                    ps_single_quote(&target)
                 )]),
                 _ => return Err(AppError::Command("Unknown exclusion kind".into())),
             }?;
@@ -846,15 +938,15 @@ pub fn security_manage_exclusions(
             match kind.as_str() {
                 "path" => ps(&[&format!(
                     "Remove-MpPreference -ExclusionPath '{}'",
-                    target.replace('\'', "''")
+                    ps_single_quote(&target)
                 )]),
                 "extension" => ps(&[&format!(
                     "Remove-MpPreference -ExclusionExtension '{}'",
-                    target.replace('\'', "''")
+                    ps_single_quote(&target)
                 )]),
                 "process" => ps(&[&format!(
                     "Remove-MpPreference -ExclusionProcess '{}'",
-                    target.replace('\'', "''")
+                    ps_single_quote(&target)
                 )]),
                 _ => return Err(AppError::Command("Unknown exclusion kind".into())),
             }?;
@@ -912,11 +1004,7 @@ pub fn security_set_cfa_mode(state: State<'_, AppState>, mode: String) -> Result
         }
     };
     confirm_gate(&state, gate.tier, "set_cfa")?;
-    let v = match mode.as_str() {
-        "enabled" => 1u32,
-        "audit" => 2u32,
-        _ => 0u32,
-    };
+    let v = validate_cfa_mode(&mode)?;
     let cmd = format!("Set-MpPreference -EnableControlledFolderAccess {}", v);
     ps(&[&cmd])?;
     undo::log_entry(
@@ -950,7 +1038,7 @@ pub fn security_manage_cfa_allowlist(
         "{}-MpPreference -{} '{}'",
         add_remove,
         param,
-        target.replace('\'', "''")
+        ps_single_quote(&target)
     );
     ps(&[&cmd])?;
     Ok(format!(
@@ -1050,14 +1138,12 @@ pub fn security_set_asr_rule_action(
         let gate = gate_for_action("set_asr_disabled");
         confirm_gate(&state, gate.tier, "set_asr_disabled")?;
     }
-    let action_val = match action.as_str() {
-        "enabled" => 1u32,
-        "audit" => 2u32,
-        _ => 0u32,
-    };
+    let action_val = validate_asr_action(&action)?;
+    let rule_id = validate_asr_rule_id(&rule_id)?;
     let cmd = format!(
         "Set-MpPreference -AttackSurfaceReductionRules_Ids '{}' -AttackSurfaceReductionRules_Actions {}",
-        rule_id, action_val
+        ps_single_quote(&rule_id),
+        action_val
     );
     ps(&[&cmd])?;
     undo::log_entry(
@@ -1113,7 +1199,7 @@ pub fn security_audit_autorun_threat_surface() -> Vec<FlaggedEntry> {
             // Try to check signature via PowerShell
             let out = ps(&[&format!(
                 "Get-AuthenticodeSignature '{}' | Select-Object -ExpandProperty Status",
-                s.command.replace('\'', "''")
+                ps_single_quote(&s.command)
             )]);
             out.map(|o| o.contains("Valid")).unwrap_or(false)
         } else {
@@ -1210,6 +1296,117 @@ mod tests {
         assert!(validate_threat_id("42 ").is_err());
     }
 
+    #[test]
+    fn threat_id_rejects_zero() {
+        assert!(validate_threat_id("0").is_err());
+        assert!(validate_threat_id("00").is_err());
+    }
+
+    #[test]
+    fn exclusion_target_rejects_overlong_and_all_control_chars() {
+        assert!(validate_exclusion_target(&"x".repeat(1025)).is_err());
+        assert!(validate_exclusion_target("C:\\x\u{7}y").is_err());
+        assert!(validate_exclusion_target("C:\\x\u{7f}y").is_err());
+        assert!(validate_exclusion_target("C:\\caf\u{e9}\\app.exe").is_ok());
+    }
+
+    #[test]
+    fn scan_path_accepts_normal_and_rejects_empty_long_and_control() {
+        assert_eq!(
+            validate_scan_path(r"C:\Users\test\Documents").unwrap(),
+            r"C:\Users\test\Documents"
+        );
+        // Single quotes are legal — escaping at the call site neutralises them.
+        assert!(validate_scan_path(r"C:\o'hara").is_ok());
+        assert!(validate_scan_path("").is_err());
+        assert!(validate_scan_path("   ").is_err());
+        assert!(validate_scan_path(&"x".repeat(261)).is_err());
+        assert!(validate_scan_path("C:\\x\ny").is_err());
+        assert!(validate_scan_path("C:\\x\0y").is_err());
+    }
+
+    #[test]
+    fn asr_rule_id_accepts_guids_and_rejects_empty_long_control_and_injection() {
+        assert_eq!(
+            validate_asr_rule_id("26190899-1602-49e8-8b69-e1b1b0f3c0b9").unwrap(),
+            "26190899-1602-49e8-8b69-e1b1b0f3c0b9"
+        );
+        assert!(validate_asr_rule_id("").is_err());
+        assert!(validate_asr_rule_id("   ").is_err());
+        assert!(validate_asr_rule_id(&"a".repeat(129)).is_err());
+        assert!(validate_asr_rule_id("a\nb").is_err());
+        assert!(validate_asr_rule_id("a\0b").is_err());
+        assert!(validate_asr_rule_id("'; Remove-Item C:\\ -Recurse -Force; '").is_err());
+        assert!(validate_asr_rule_id("1 & whoami").is_err());
+        assert!(validate_asr_rule_id("rule id with spaces").is_err());
+    }
+
+    #[test]
+    fn wmi_class_accepts_known_and_rejects_empty_long_control_and_injection() {
+        assert_eq!(
+            validate_wmi_class("AntiVirusProduct").unwrap(),
+            "AntiVirusProduct"
+        );
+        assert_eq!(
+            validate_wmi_class("FirewallProduct").unwrap(),
+            "FirewallProduct"
+        );
+        assert_eq!(
+            validate_wmi_class("AntiSpywareProduct").unwrap(),
+            "AntiSpywareProduct"
+        );
+        assert!(validate_wmi_class("").is_err());
+        assert!(validate_wmi_class("   ").is_err());
+        assert!(validate_wmi_class(&"a".repeat(129)).is_err());
+        assert!(validate_wmi_class("a\nb").is_err());
+        assert!(validate_wmi_class("a\0b").is_err());
+        assert!(validate_wmi_class("AntiVirusProduct; Remove-Item C:\\ -Recurse -Force").is_err());
+        assert!(validate_wmi_class("antivirusproduct").is_err());
+    }
+
+    #[test]
+    fn cfa_mode_maps_known_and_rejects_unknown_fail_closed() {
+        assert_eq!(validate_cfa_mode("enabled").unwrap(), 1);
+        assert_eq!(validate_cfa_mode("audit").unwrap(), 2);
+        assert_eq!(validate_cfa_mode("disabled").unwrap(), 0);
+        assert!(validate_cfa_mode("").is_err());
+        assert!(validate_cfa_mode(&"a".repeat(129)).is_err());
+        assert!(validate_cfa_mode("a\nb").is_err());
+        assert!(validate_cfa_mode("a\0b").is_err());
+        assert!(validate_cfa_mode("ENABLED").is_err());
+        assert!(validate_cfa_mode("0").is_err());
+        assert!(validate_cfa_mode("off").is_err());
+    }
+
+    #[test]
+    fn asr_action_maps_known_and_rejects_unknown_fail_closed() {
+        assert_eq!(validate_asr_action("enabled").unwrap(), 1);
+        assert_eq!(validate_asr_action("audit").unwrap(), 2);
+        assert_eq!(validate_asr_action("disabled").unwrap(), 0);
+        assert!(validate_asr_action("").is_err());
+        assert!(validate_asr_action(&"a".repeat(129)).is_err());
+        assert!(validate_asr_action("a\0b").is_err());
+        assert!(validate_asr_action("a\nb").is_err());
+        assert!(validate_asr_action("ENABLED").is_err());
+        assert!(validate_asr_action("1").is_err());
+        assert!(validate_asr_action("enable").is_err());
+    }
+
+    #[test]
+    fn ps_single_quote_doubles_quotes() {
+        assert_eq!(
+            ps_single_quote("C:\\plain\\path.exe"),
+            "C:\\plain\\path.exe"
+        );
+        assert_eq!(
+            ps_single_quote("C:\\o'hara\\app.exe"),
+            "C:\\o''hara\\app.exe"
+        );
+        assert_eq!(
+            ps_single_quote("'; Remove-Item C:\\ -Recurse -Force; '"),
+            "''; Remove-Item C:\\ -Recurse -Force; ''"
+        );
+    }
     #[test]
     fn exclusion_target_rejects_control_chars_only() {
         // Legal Windows path characters — including `;` `&` `$` and parens —
