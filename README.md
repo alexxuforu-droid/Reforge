@@ -6,7 +6,7 @@ machine in a guided, fully-reversible session — every change can be undone wit
 Built with **Tauri 2 + Rust + React + TypeScript + Tailwind**.
 
 > Windows only (Windows 10 & 11). See `docs/PC-Makeover-Spec.md` for the technical
-> spec and `docs/ROADMAP.md` for the plan to v1.0.
+> spec; see `CHANGELOG.md` for release history.
 
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL-3.0-blue.svg)](LICENSE)
 [![GitHub Release](https://img.shields.io/github/v/release/alexxuforu-droid/Reforge)](https://github.com/alexxuforu-droid/Reforge/releases)
@@ -226,11 +226,10 @@ npm run test:a11y       # 4px grid, clipping, focus-visible, contrast checks
 - Every command returns a typed `Result<T, AppError>`; inputs are validated Rust-side
   before touching the filesystem, registry, or a shell.
 
-## Roadmap
+## Release history
 
-The plan to v1.0 — 7 phases, from "ship the truth" to "scale", with file-level
-work items and a prioritized backlog — lives in
-**[docs/ROADMAP.md](docs/ROADMAP.md)**. Delivery decisions (unsigned-by-decision
+Shipped releases are recorded in **[CHANGELOG.md](CHANGELOG.md)**.
+Delivery decisions (unsigned-by-decision
 posture, startup handoff, exe size) are recorded in
 [docs/DELIVERY.md](docs/DELIVERY.md).
 
