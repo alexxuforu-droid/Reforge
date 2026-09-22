@@ -1,7 +1,7 @@
 # Perf baseline — V2 plan pillar 1 (stamped 2026-09-18)
 
 Harness: `node scripts/perf-run.mjs [--baseline]`. Four scripts, one per
-user-felt metric in `docs/V2-PLAN.md`. Full numbers in
+user-felt metric from the v1.1 perf plan (since removed; history in git log). Full numbers in
 `docs/perf-baseline.json`; this file is the human-readable cut.
 
 ## Before numbers (this machine, warm)

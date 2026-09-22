@@ -1,6 +1,6 @@
 # Delivery & Platform — S12
 
-This file records the delivery decisions the roadmap asked
+This file records the delivery decisions the plan asked
 to be **documented, not just implemented**:
 
 1. SmartScreen reality — **unsigned by decision** (S12.2)
@@ -132,7 +132,7 @@ exe, sha256-verified, NSIS-installed silently) — accepted for now.
 
 ---
 
-## 5. Packs 3.0 decision register (P-3, ROADMAP §P)
+## 5. Packs 3.0 decision register (P-3)
 
 **Recorded 2026-09-17.** One table, no ambiguity:
 

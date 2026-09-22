@@ -229,7 +229,8 @@ versioning. *(Only if the personal tool proves good.)*
 > This status section dates from the original build passes (2026-08-10) and is
 > no longer accurate. The authoritative, audited picture of what's built lives
 > in **README.md** (17 sections, 263 commands, 116 Rust tests, 35 frontend
-> test files), and the forward plan lives in **docs/ROADMAP.md**. The stale
+> test files), and the forward plan has been completed and shipped;
+> history lives in **CHANGELOG.md**. The stale
 > lists below were removed so they can't contradict the code.
 
 **What the audit (2026-08-16) found the spec-era "not built" items actually
@@ -245,8 +246,8 @@ are today:**
 | RGB sync | ✅ built (`rgb.rs` via the OpenRGB protocol) |
 | marketplace | ✅ built (local `.reforgepack` bundles + Marketplace view) |
 | boot/login skinning | ❌ intentionally not built (locked down on Win11; capability-gated as unsupported) |
-| context-menu skinning, folder color-coding | ❌ not built (backlog — roadmap §D) |
-| cloud backup | ❌ not built (optional decision — roadmap Phase 6) |
+| context-menu skinning, folder color-coding | ❌ not built (backlog) |
+| cloud backup | ❌ not built (declined — local-first) |
 
 **Also landed since the spec was written:** Windows Security Center integration
 (`security_center.rs`, 25 commands), storage liberation (radar, biggest files,

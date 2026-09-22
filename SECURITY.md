@@ -31,7 +31,7 @@ bug.
 - **Packs are data-only, never code.** The pack importer rejects scripts and
   executables by both extension *and* real file header (content sniffing —
   an `.exe` renamed to `.png` is still rejected). Pack media is size-capped
-  and checksum-verified (`docs/ROADMAP.md` P3-1).
+  and checksum-verified.
 - **Everything is reversible.** Every state change records a before-snapshot
   in the undo log, revertible from History in one click. Nothing is silently
   written.
